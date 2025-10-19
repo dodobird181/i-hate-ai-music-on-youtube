@@ -69,10 +69,21 @@ header p {
 }
 
 .loading {
-    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     padding: 2rem;
-    font-size: 1.2rem;
+    gap: 1rem;
+}
+
+.loading.hidden {
+    display: none;
+}
+
+.loading p {
     color: #aaa;
+    font-size: 1rem;
 }
 
 .hidden {

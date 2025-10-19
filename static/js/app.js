@@ -1,6 +1,7 @@
 const searchInput = document.getElementById('searchInput');
 const searchButton = document.getElementById('searchButton');
 const loading = document.getElementById('loading');
+const loadingText = document.getElementById('loadingText');
 const results = document.getElementById('results');
 const loadingMore = document.getElementById('loadingMore');
 
@@ -39,7 +40,7 @@ function handleSearch() {
     nextPageToken = null;
     loadingMore.classList.add('hidden');
 
-    loading.textContent = 'Searching and filtering results...';
+    loadingText.textContent = 'Searching and filtering results...';
     loading.classList.remove('hidden');
     results.innerHTML = '';
 
@@ -52,7 +53,7 @@ function handleSearch() {
 
         if (message.type === 'video') {
             videoCount++;
-            loading.textContent = `Found ${videoCount} video${videoCount !== 1 ? 's' : ''}...`;
+            loadingText.textContent = `Found ${videoCount} video${videoCount !== 1 ? 's' : ''}...`;
             addVideoToResults(message.data);
         } else if (message.type === 'done') {
             eventSource.close();
