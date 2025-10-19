@@ -2,8 +2,10 @@ import asyncio
 import logging
 from typing import List
 
+from flask import Flask
 from openai import AsyncOpenAI
 
+from models.comment import Comment
 from models.video import Video
 
 logger = logging.getLogger(__name__)
@@ -11,10 +13,12 @@ logger = logging.getLogger(__name__)
 
 class FilterService:
 
-    def __init__(self, api_key: str, youtube_service):
+    def __init__(self, app: Flask, api_key: str, youtube_service):
+        self.app = app
         self.client = AsyncOpenAI(api_key=api_key)
         self.youtube_service = youtube_service
         self.batch_size = 5
+        self.max_comments = app.config["MAX_COMMENTS_TO_ASSESS_PER_VIDEO"]
 
     def filter_videos(self, videos: List[Video]) -> List[Video]:
         """
@@ -36,7 +40,7 @@ class FilterService:
         async def process_batch(batch_videos):
             tasks = []
             for video in batch_videos:
-                comments = self.youtube_service.get_comments(video.id)
+                comments = self.youtube_service.get_comments(video.id, self.max_comments)
                 tasks.append(self._check_video(video, comments))
             return await asyncio.gather(*tasks)
 
@@ -51,7 +55,7 @@ class FilterService:
     async def _async_filter_videos(self, videos: List[Video]) -> List[Video]:
         tasks = []
         for video in videos:
-            comments = self.youtube_service.get_comments(video.id)
+            comments = self.youtube_service.get_comments(video.id, self.max_comments)
             tasks.append(self._check_video(video, comments))
 
         results = []
@@ -62,19 +66,21 @@ class FilterService:
 
         return [video for video, is_human in results if is_human]
 
-    async def _check_video(self, video: Video, comments: List[str]) -> tuple[Video, bool]:
+    async def _check_video(self, video: Video, comments: List[Comment]) -> tuple[Video, bool]:
 
         if not comments:
-            logger.warning(f"No comments found for video {video.id}, filtering out")
+            logger.warning(f"No comments found for video {video}, filtering out...")
             return video, False
 
         with open("QUERY.md", "r") as f:
             prompt_template = f.read()
 
-        comments_text = "\n".join(comments[:50])
-        prompt = prompt_template.format(
-            video_title=video.title, channel_name=video.channel.title, comments=comments_text
-        )
+        comment_threshold = self.app.config["EXCLUDE_VIDEOS_UNDER_N_COMMENTS"]
+        if len(comments) < comment_threshold:
+            logger.info(f"Num comments for video {video} under threshold {comment_threshold}, filtering out...")
+            return video, False
+
+        prompt = prompt_template.format(comments="\n".join([str(x) for x in comments]))
 
         try:
             response = await self.client.chat.completions.create(
@@ -82,12 +88,11 @@ class FilterService:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an AI detection assistant. Respond with only 'HUMAN' or 'AI'.",
+                        "content": "You are an AI-music detection assistant. Respond with only a number between 0 and 100 (inclusive). E.g., '42'.",
                     },
                     {"role": "user", "content": prompt},
                 ],
-                temperature=0.0,
-                max_tokens=10,
+                temperature=0.3,
             )
 
             content = response.choices[0].message.content
@@ -95,10 +100,13 @@ class FilterService:
                 logger.warning(f"Empty response for video {video.id}")
                 return video, False
 
-            result = content.strip().upper()
-            is_human = result == "HUMAN"
-            logger.info(f"Video {video.id} classified as: {result}")
+            result = content.strip()
+            logger.info(f"RAW RESPONSE for {video.id}: '{result}'")
+
+            is_human = int(result) >= 90
+            logger.info(f"{video}'s humanity score is: {result}")
             return video, is_human
+
         except Exception as e:
-            logger.error(f"Error checking video {video.id}: {e}")
+            logger.error(f"Error checking video {video}: {e}")
             return video, False

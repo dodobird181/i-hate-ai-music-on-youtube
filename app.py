@@ -11,19 +11,26 @@ from services.youtube_service import YouTubeService
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("openai._base_client").setLevel(logging.WARNING)
+logging.getLogger("googleapiclient.http").setLevel(
+    # 403s on videos with comments disabled show up as WARNINGS
+    logging.ERROR
+)
 
 app = Flask(__name__)
 app.config["YOUTUBE_API_KEY"] = os.getenv("YOUTUBE_API_KEY")
 app.config["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
-app.config["MAX_VIDEOS_SEARCH_RESULTS"] = 1
+app.config["MAX_VIDEOS_SEARCH_RESULTS"] = 5
 app.config["EXCLUDE_VIDEOS_UNDER_N_COMMENTS"] = 50
 app.config["MAX_COMMENTS_TO_ASSESS_PER_VIDEO"] = 100
 app.config["PRE_AI_CUTOFF_DATE"] = datetime(2022, 5, 1, tzinfo=timezone.utc)
 
 youtube_service = YouTubeService(app.config["YOUTUBE_API_KEY"])
-filter_service = FilterService(app.config["OPENAI_API_KEY"], youtube_service)
+filter_service = FilterService(app, app.config["OPENAI_API_KEY"], youtube_service)
 
 
 @app.route("/")
