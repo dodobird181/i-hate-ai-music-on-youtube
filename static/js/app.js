@@ -9,6 +9,7 @@ let eventSource = null;
 let currentQuery = '';
 let nextPageToken = null;
 let isLoadingMore = false;
+let displayedVideoIds = new Set();
 
 searchButton.addEventListener('click', handleSearch);
 searchInput.addEventListener('keypress', (e) => {
@@ -39,6 +40,7 @@ function handleSearch() {
     currentQuery = query;
     nextPageToken = null;
     loadingMore.classList.add('hidden');
+    displayedVideoIds.clear();
 
     loadingText.textContent = 'Searching and filtering results...';
     loading.classList.remove('hidden');
@@ -128,6 +130,14 @@ function loadMoreVideos() {
 }
 
 function addVideoToResults(video) {
+    // Check for duplicates
+    if (displayedVideoIds.has(video.video_id)) {
+        console.log(`Skipping duplicate video: ${video.video_id}`);
+        return;
+    }
+
+    displayedVideoIds.add(video.video_id);
+
     const videoCard = document.createElement('div');
     videoCard.className = 'video-card';
     videoCard.innerHTML = `
