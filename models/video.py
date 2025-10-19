@@ -32,6 +32,7 @@ class Video:
 
     id: str
     title: str
+    description: str
     url: str
     thumbnail_url: str
     channel: Channel
@@ -54,6 +55,7 @@ class Video:
             raise cls.ParseError("Expected a 'snippet' key in video data: {}.".format(json.dumps(data, indent=2)))
 
         title = str(snippet.get("title", None))
+        description = str(snippet.get("description", ""))
         thumbnail_url = snippet.get("thumbnails", {}).get("medium", {}).get("url", None)
         channel_id = snippet.get("channelId", None)
         channel_title = snippet.get("channelTitle", None)
@@ -74,6 +76,7 @@ class Video:
         return cls(
             id=id,
             title=title,
+            description=description,
             url=f"https://www.youtube.com/watch?v={id}",
             thumbnail_url=thumbnail_url,
             channel=Channel(id=channel_id, title=channel_title),

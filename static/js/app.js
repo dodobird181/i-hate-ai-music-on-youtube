@@ -2,13 +2,28 @@ const searchInput = document.getElementById('searchInput');
 const searchButton = document.getElementById('searchButton');
 const loading = document.getElementById('loading');
 const results = document.getElementById('results');
+const loadingMore = document.getElementById('loadingMore');
 
 let eventSource = null;
+let currentQuery = '';
+let nextPageToken = null;
+let isLoadingMore = false;
 
 searchButton.addEventListener('click', handleSearch);
 searchInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
         handleSearch();
+    }
+});
+
+window.addEventListener('scroll', () => {
+    if (isLoadingMore || !nextPageToken || !currentQuery) return;
+
+    const scrollPosition = window.innerHeight + window.scrollY;
+    const threshold = document.documentElement.scrollHeight - 500;
+
+    if (scrollPosition >= threshold) {
+        loadMoreVideos();
     }
 });
 
@@ -19,6 +34,10 @@ function handleSearch() {
     if (eventSource) {
         eventSource.close();
     }
+
+    currentQuery = query;
+    nextPageToken = null;
+    loadingMore.classList.add('hidden');
 
     loading.textContent = 'Searching and filtering results...';
     loading.classList.remove('hidden');
@@ -40,6 +59,8 @@ function handleSearch() {
             eventSource = null;
             loading.classList.add('hidden');
 
+            nextPageToken = message.nextPageToken || null;
+
             if (videoCount === 0) {
                 results.innerHTML = '<p style="text-align: center; color: #aaa;">No AI-free videos found.</p>';
             }
@@ -59,6 +80,49 @@ function handleSearch() {
         if (videoCount === 0) {
             results.innerHTML = '<p class="error">An error occurred. Please try again.</p>';
         }
+    };
+}
+
+function loadMoreVideos() {
+    if (!nextPageToken || !currentQuery || isLoadingMore) return;
+
+    isLoadingMore = true;
+    loadingMore.classList.remove('hidden');
+
+    if (eventSource) {
+        eventSource.close();
+    }
+
+    let videoCount = 0;
+    const url = `/search?query=${encodeURIComponent(currentQuery)}&pageToken=${encodeURIComponent(nextPageToken)}`;
+    eventSource = new EventSource(url);
+
+    eventSource.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+
+        if (message.type === 'video') {
+            videoCount++;
+            addVideoToResults(message.data);
+        } else if (message.type === 'done') {
+            eventSource.close();
+            eventSource = null;
+            loadingMore.classList.add('hidden');
+            isLoadingMore = false;
+
+            nextPageToken = message.nextPageToken || null;
+        } else if (message.type === 'error') {
+            eventSource.close();
+            eventSource = null;
+            loadingMore.classList.add('hidden');
+            isLoadingMore = false;
+        }
+    };
+
+    eventSource.onerror = () => {
+        eventSource.close();
+        eventSource = null;
+        loadingMore.classList.add('hidden');
+        isLoadingMore = false;
     };
 }
 

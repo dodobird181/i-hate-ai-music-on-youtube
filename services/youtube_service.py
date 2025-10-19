@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List
+from typing import List, Optional, Tuple
 
 from googleapiclient.discovery import build
 
@@ -15,20 +15,25 @@ class YouTubeService:
     def __init__(self, api_key: str):
         self.youtube = build("youtube", "v3", developerKey=api_key)
 
-    def search_videos(self, query: str, max_results=20) -> List[Video]:
+    def search_videos(self, query: str, max_results=20, page_token: Optional[str] = None) -> Tuple[List[Video], Optional[str]]:
         """
-        Search youtube and return a list of videos.
+        Search youtube and return a list of videos along with the next page token.
+        Returns: (videos, next_page_token)
         """
+        request_params = {
+            "q": query,
+            "type": "video",
+            "part": "snippet",
+            "maxResults": max_results,
+            "videoCategoryId": "10",
+            "fields": "items(id/videoId,snippet(publishedAt,channelId,channelTitle,title,description,thumbnails/medium/url)),nextPageToken",
+        }
+        if page_token:
+            request_params["pageToken"] = page_token
+
         videos_response = (
             self.youtube.search()
-            .list(
-                q=query,
-                type="video",
-                part="snippet",
-                maxResults=max_results,
-                videoCategoryId="10",
-                fields="items(id/videoId,snippet(publishedAt,channelId,channelTitle,title,thumbnails/medium/url))",
-            )
+            .list(**request_params)
             .execute()
         )
         videos = []
@@ -51,7 +56,8 @@ class YouTubeService:
                         ),
                     )
                 )
-        return videos
+        next_page_token = videos_response.get("nextPageToken")
+        return videos, next_page_token
 
     def get_comments(self, video_id: str, max_results: int) -> List[Comment]:
         try:
@@ -90,8 +96,8 @@ class YouTubeService:
                         )
             return comments
         except Exception as e:
-            if "has disabled comments" in str(e):
+            if e.__dict__["error_details"][0]["reason"] == "commentsDisabled":
                 # Expected that we will sometimes hit videos that have comments disabled...
-                pass
+                return []
             logger.error(f"Error fetching comments for video {video_id}: {e}")
             return []

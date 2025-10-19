@@ -69,7 +69,11 @@ class FilterService:
     async def _check_video(self, video: Video, comments: List[Comment]) -> tuple[Video, bool]:
 
         if not comments:
-            logger.warning(f"No comments found for video {video}, filtering out...")
+            logger.info(f"No comments found for video {video}, filtering out...")
+            return video, False
+
+        if video.contains_synthetic_media:
+            logger.info(f"{video} flagged by it's creator as AI (thanks bro), filtering out...")
             return video, False
 
         with open("QUERY.md", "r") as f:
@@ -80,11 +84,13 @@ class FilterService:
             logger.info(f"Num comments for video {video} under threshold {comment_threshold}, filtering out...")
             return video, False
 
-        prompt = prompt_template.format(comments="\n".join([str(x) for x in comments]))
+        prompt = prompt_template.format(
+            description=video.description, comments="\n".join([str(x) for x in comments])
+        )
 
         try:
             response = await self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-5-mini-2025-08-07",
                 messages=[
                     {
                         "role": "system",
@@ -92,7 +98,6 @@ class FilterService:
                     },
                     {"role": "user", "content": prompt},
                 ],
-                temperature=0.3,
             )
 
             content = response.choices[0].message.content
@@ -101,7 +106,6 @@ class FilterService:
                 return video, False
 
             result = content.strip()
-            logger.info(f"RAW RESPONSE for {video.id}: '{result}'")
 
             is_human = int(result) >= 90
             logger.info(f"{video}'s humanity score is: {result}")

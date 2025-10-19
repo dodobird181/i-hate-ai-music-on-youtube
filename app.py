@@ -11,20 +11,16 @@ from services.youtube_service import YouTubeService
 
 load_dotenv()
 
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.ERROR, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("openai._base_client").setLevel(logging.WARNING)
-logging.getLogger("googleapiclient.http").setLevel(
-    # 403s on videos with comments disabled show up as WARNINGS
-    logging.ERROR
-)
+logging.getLogger("services.youtube_service").setLevel(logging.DEBUG)
+logging.getLogger("services.filter_service").setLevel(logging.DEBUG)
 
 app = Flask(__name__)
 app.config["YOUTUBE_API_KEY"] = os.getenv("YOUTUBE_API_KEY")
 app.config["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
-app.config["MAX_VIDEOS_SEARCH_RESULTS"] = 5
+app.config["MAX_VIDEOS_SEARCH_RESULTS"] = 20
 app.config["EXCLUDE_VIDEOS_UNDER_N_COMMENTS"] = 50
 app.config["MAX_COMMENTS_TO_ASSESS_PER_VIDEO"] = 100
 app.config["PRE_AI_CUTOFF_DATE"] = datetime(2022, 5, 1, tzinfo=timezone.utc)
@@ -41,12 +37,15 @@ def index():
 @app.route("/search", methods=["GET"])
 def search():
     query = request.args.get("query", "")
+    page_token = request.args.get("pageToken", None)
     if not query:
         return jsonify({"error": "Query is required"}), 400
 
     def generate():
         try:
-            videos = youtube_service.search_videos(query, max_results=app.config["MAX_VIDEOS_SEARCH_RESULTS"])
+            videos, next_page_token = youtube_service.search_videos(
+                query, max_results=app.config["MAX_VIDEOS_SEARCH_RESULTS"], page_token=page_token
+            )
 
             count = 0
             for video in filter_service.filter_videos_streaming(videos):
@@ -61,7 +60,7 @@ def search():
                 }
                 yield f"data: {json.dumps({'type': 'video', 'data': video_data})}\n\n"
 
-            yield f"data: {json.dumps({'type': 'done', 'count': count})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'count': count, 'nextPageToken': next_page_token})}\n\n"
 
         except Exception as e:
             logging.error(f"Error during search: {e}")
