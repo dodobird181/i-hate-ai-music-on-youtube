@@ -39,10 +39,15 @@ class YouTubeService:
                 logger.error(f"Failed to parse video data: {e}")
                 continue
             finally:
-                logger.info(
-                    "YouTubeService found {}: {}.".format(
-                        len(videos),
-                        json.dumps({"videos": [str(x) for x in videos]}, indent=2),
+                logger.debug(
+                    "YouTubeService found: {}.".format(
+                        json.dumps(
+                            {
+                                "num_videos": len(videos),
+                                "videos": [str(x) for x in videos],
+                            },
+                            indent=2,
+                        ),
                     )
                 )
         return videos
@@ -55,9 +60,10 @@ class YouTubeService:
                 .execute()
             )
             comments = [
-                item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
+                item["snippet"]["topLevelComment"]["snippet"]["textOriginal"]
                 for item in comments_response.get("items", [])
             ]
+            breakpoint()
             return comments
         except Exception:
             return []

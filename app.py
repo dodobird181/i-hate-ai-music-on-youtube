@@ -1,9 +1,10 @@
+import json
 import logging
 import os
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 
 from services.filter_service import FilterService
 from services.youtube_service import YouTubeService
@@ -16,7 +17,7 @@ app = Flask(__name__)
 app.config["YOUTUBE_API_KEY"] = os.getenv("YOUTUBE_API_KEY")
 app.config["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
-app.config["MAX_VIDEOS_SEARCH_RESULTS"] = 50
+app.config["MAX_VIDEOS_SEARCH_RESULTS"] = 1
 app.config["EXCLUDE_VIDEOS_UNDER_N_COMMENTS"] = 50
 app.config["MAX_COMMENTS_TO_ASSESS_PER_VIDEO"] = 100
 app.config["PRE_AI_CUTOFF_DATE"] = datetime(2022, 5, 1, tzinfo=timezone.utc)
@@ -30,30 +31,36 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/search", methods=["POST"])
+@app.route("/search", methods=["GET"])
 def search():
-    if not request.json:
-        return jsonify({"error": "Expected JSON payload."}), 400
-    query = request.json.get("query", "")
+    query = request.args.get("query", "")
     if not query:
         return jsonify({"error": "Query is required"}), 400
 
-    videos = youtube_service.search_videos(query, max_results=app.config["MAX_VIDEOS_SEARCH_RESULTS"])
-    filtered_videos = filter_service.filter_videos(videos)
+    def generate():
+        try:
+            videos = youtube_service.search_videos(query, max_results=app.config["MAX_VIDEOS_SEARCH_RESULTS"])
 
-    videos_json = [
-        {
-            "video_id": v.id,
-            "title": v.title,
-            "url": v.url,
-            "thumbnail": v.thumbnail_url,
-            "channel": v.channel.title,
-            "channel_id": v.channel.id,
-        }
-        for v in filtered_videos
-    ]
+            count = 0
+            for video in filter_service.filter_videos_streaming(videos):
+                count += 1
+                video_data = {
+                    "video_id": video.id,
+                    "title": video.title,
+                    "url": video.url,
+                    "thumbnail": video.thumbnail_url,
+                    "channel": video.channel.title,
+                    "channel_id": video.channel.id,
+                }
+                yield f"data: {json.dumps({'type': 'video', 'data': video_data})}\n\n"
 
-    return jsonify({"videos": videos_json})
+            yield f"data: {json.dumps({'type': 'done', 'count': count})}\n\n"
+
+        except Exception as e:
+            logging.error(f"Error during search: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream")
 
 
 if __name__ == "__main__":

@@ -25,6 +25,29 @@ class FilterService:
         filtered = asyncio.run(self._async_filter_videos(videos))
         return filtered
 
+    def filter_videos_streaming(self, videos: List[Video]):
+        """
+        Generator that yields videos as they pass filtering.
+        Processes in batches but yields results immediately.
+        """
+        if not videos:
+            return
+
+        async def process_batch(batch_videos):
+            tasks = []
+            for video in batch_videos:
+                comments = self.youtube_service.get_comments(video.id)
+                tasks.append(self._check_video(video, comments))
+            return await asyncio.gather(*tasks)
+
+        for i in range(0, len(videos), self.batch_size):
+            batch = videos[i : i + self.batch_size]
+            batch_results = asyncio.run(process_batch(batch))
+
+            for video, is_human in batch_results:
+                if is_human:
+                    yield video
+
     async def _async_filter_videos(self, videos: List[Video]) -> List[Video]:
         tasks = []
         for video in videos:
@@ -40,6 +63,7 @@ class FilterService:
         return [video for video, is_human in results if is_human]
 
     async def _check_video(self, video: Video, comments: List[str]) -> tuple[Video, bool]:
+
         if not comments:
             logger.warning(f"No comments found for video {video.id}, filtering out")
             return video, False
