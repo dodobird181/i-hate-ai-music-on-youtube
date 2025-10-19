@@ -1,2 +1,2 @@
-from channel import Channel
-from video import Video
+from models.channel import Channel
+from models.video import Video

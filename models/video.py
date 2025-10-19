@@ -41,7 +41,14 @@ class Video:
 
     @classmethod
     def from_data(cls, data: Dict[str, Any]) -> "Video":
-        id = str(data.get("id", None))
+        raw_id = data.get("id")
+        if isinstance(raw_id, dict):
+            # Search API returns video IDs in a second nested dictionary...
+            id = str(raw_id.get("videoId", None))
+        else:
+            # Videos API returns video IDs as a simple string
+            id = str(raw_id)
+
         snippet = data.get("snippet", None)
         if not snippet:
             raise cls.ParseError("Expected a 'snippet' key in video data: {}.".format(json.dumps(data, indent=2)))
@@ -51,12 +58,7 @@ class Video:
         channel_id = snippet.get("channelId", None)
         channel_title = snippet.get("channelTitle", None)
 
-        statistics = data.get("statistics", None)
-        if not statistics:
-            raise cls.ParseError(
-                "Expected a 'statistics' key in video data: {}.".format(json.dumps(data, indent=2))
-            )
-
+        statistics = data.get("statistics", {})
         views = int(statistics.get("viewCount", 0))
         likes = int(statistics.get("likeCount", 0))
         favorites = int(statistics.get("favoriteCount", 0))
@@ -79,3 +81,6 @@ class Video:
             is_livestream=is_livestream,
             contains_synthetic_media=contains_synthetic_media,
         )
+
+    def __str__(self) -> str:
+        return '<Video: "{}", by {}>'.format(self.title, self.channel.title)
