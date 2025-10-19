@@ -7,6 +7,7 @@ from openai import AsyncOpenAI
 
 from models.comment import Comment
 from models.video import Video
+from services.cache_service import CacheService
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ class FilterService:
         self.app = app
         self.client = AsyncOpenAI(api_key=api_key)
         self.youtube_service = youtube_service
+        self.cache_service = CacheService()
         self.batch_size = 5
         self.max_comments = app.config["MAX_COMMENTS_TO_ASSESS_PER_VIDEO"]
 
@@ -67,13 +69,21 @@ class FilterService:
         return [video for video, is_human in results if is_human]
 
     async def _check_video(self, video: Video, comments: List[Comment]) -> tuple[Video, bool]:
+        # Check cache first
+        cached_result = self.cache_service.get_cached_result(video.id)
+        if cached_result is not None:
+            humanity_score, is_human = cached_result
+            logger.info(f"Using cached result for {video}: score={humanity_score}, is_human={is_human}")
+            return video, is_human
 
         if not comments:
             logger.info(f"No comments found for video {video}, filtering out...")
+            self.cache_service.cache_result(video.id, 0, False)
             return video, False
 
         if video.contains_synthetic_media:
             logger.info(f"{video} flagged by it's creator as AI (thanks bro), filtering out...")
+            self.cache_service.cache_result(video.id, 0, False)
             return video, False
 
         with open("QUERY.md", "r") as f:
@@ -82,6 +92,7 @@ class FilterService:
         comment_threshold = self.app.config["EXCLUDE_VIDEOS_UNDER_N_COMMENTS"]
         if len(comments) < comment_threshold:
             logger.info(f"Num comments for video {video} under threshold {comment_threshold}, filtering out...")
+            self.cache_service.cache_result(video.id, 0, False)
             return video, False
 
         prompt = prompt_template.format(
@@ -103,12 +114,18 @@ class FilterService:
             content = response.choices[0].message.content
             if not content:
                 logger.warning(f"Empty response for video {video.id}")
+                self.cache_service.cache_result(video.id, 0, False)
                 return video, False
 
             result = content.strip()
+            humanity_score = int(result)
+            is_human = humanity_score >= 90
 
-            is_human = int(result) >= 90
-            logger.info(f"{video}'s humanity score is: {result}")
+            logger.info(f"{video}'s humanity score is: {humanity_score}")
+
+            # Cache the result
+            self.cache_service.cache_result(video.id, humanity_score, is_human)
+
             return video, is_human
 
         except Exception as e:
