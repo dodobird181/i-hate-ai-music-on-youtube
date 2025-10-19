@@ -51,6 +51,9 @@ def search():
 
             pages_fetched = 0
 
+            # Send initial status
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Searching...'})}\n\n"
+
             # Keep fetching until we have enough videos (for initial load) or fetched one page (for pagination)
             while True:
                 videos, next_page_token = youtube_service.search_videos(
@@ -69,6 +72,11 @@ def search():
                         "channel_id": video.channel.id,
                     }
                     yield f"data: {json.dumps({'type': 'video', 'data': video_data})}\n\n"
+
+                    # Send status update with count
+                    plural = "s" if count != 1 else ""
+                    status_msg = f"Found {count} video{plural}..."
+                    yield f"data: {json.dumps({'type': 'status', 'message': status_msg})}\n\n"
 
                 # Stop conditions:
                 # 1. For pagination requests: always stop after one page

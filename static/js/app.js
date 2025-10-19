@@ -1,9 +1,8 @@
 const searchInput = document.getElementById('searchInput');
 const searchButton = document.getElementById('searchButton');
-const loading = document.getElementById('loading');
-const loadingText = document.getElementById('loadingText');
 const results = document.getElementById('results');
 const loadingMore = document.getElementById('loadingMore');
+const loadingMoreText = document.getElementById('loadingMoreText');
 
 let eventSource = null;
 let currentQuery = '';
@@ -39,11 +38,10 @@ function handleSearch() {
 
     currentQuery = query;
     nextPageToken = null;
-    loadingMore.classList.add('hidden');
     displayedVideoIds.clear();
 
-    loadingText.textContent = 'Searching and filtering results...';
-    loading.classList.remove('hidden');
+    loadingMoreText.textContent = 'Searching and filtering results...';
+    loadingMore.classList.remove('hidden');
     results.innerHTML = '';
 
     let videoCount = 0;
@@ -53,14 +51,15 @@ function handleSearch() {
     eventSource.onmessage = (event) => {
         const message = JSON.parse(event.data);
 
-        if (message.type === 'video') {
+        if (message.type === 'status') {
+            loadingMoreText.textContent = message.message;
+        } else if (message.type === 'video') {
             videoCount++;
-            loadingText.textContent = `Found ${videoCount} video${videoCount !== 1 ? 's' : ''}...`;
             addVideoToResults(message.data);
         } else if (message.type === 'done') {
             eventSource.close();
             eventSource = null;
-            loading.classList.add('hidden');
+            loadingMore.classList.add('hidden');
 
             nextPageToken = message.nextPageToken || null;
 
@@ -70,7 +69,7 @@ function handleSearch() {
         } else if (message.type === 'error') {
             eventSource.close();
             eventSource = null;
-            loading.classList.add('hidden');
+            loadingMore.classList.add('hidden');
             results.innerHTML = `<p class="error">Error: ${escapeHtml(message.message)}</p>`;
         }
     };
@@ -78,7 +77,7 @@ function handleSearch() {
     eventSource.onerror = () => {
         eventSource.close();
         eventSource = null;
-        loading.classList.add('hidden');
+        loadingMore.classList.add('hidden');
 
         if (videoCount === 0) {
             results.innerHTML = '<p class="error">An error occurred. Please try again.</p>';
@@ -90,6 +89,7 @@ function loadMoreVideos() {
     if (!nextPageToken || !currentQuery || isLoadingMore) return;
 
     isLoadingMore = true;
+    loadingMoreText.textContent = 'Loading more videos...';
     loadingMore.classList.remove('hidden');
 
     if (eventSource) {
@@ -103,7 +103,9 @@ function loadMoreVideos() {
     eventSource.onmessage = (event) => {
         const message = JSON.parse(event.data);
 
-        if (message.type === 'video') {
+        if (message.type === 'status') {
+            loadingMoreText.textContent = message.message;
+        } else if (message.type === 'video') {
             videoCount++;
             addVideoToResults(message.data);
         } else if (message.type === 'done') {
