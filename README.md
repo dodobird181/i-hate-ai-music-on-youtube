@@ -1,3 +1,5 @@
+Used blocklis of AI youtube channels from: https://surasshu.com/blocklist-for-ai-music-on-youtube/.
+
 # Project Idea:
 Create an indexed search / website for youtube specifically targeting people who want to listen to music on youtube that isn't made with AI.
 ## Methodology:

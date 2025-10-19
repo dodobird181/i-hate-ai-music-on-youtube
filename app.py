@@ -43,22 +43,48 @@ def search():
 
     def generate():
         try:
-            videos, next_page_token = youtube_service.search_videos(
-                query, max_results=app.config["MAX_VIDEOS_SEARCH_RESULTS"], page_token=page_token
-            )
-
             count = 0
-            for video in filter_service.filter_videos_streaming(videos):
-                count += 1
-                video_data = {
-                    "video_id": video.id,
-                    "title": video.title,
-                    "url": video.url,
-                    "thumbnail": video.thumbnail_url,
-                    "channel": video.channel.title,
-                    "channel_id": video.channel.id,
-                }
-                yield f"data: {json.dumps({'type': 'video', 'data': video_data})}\n\n"
+            current_page_token = page_token
+            is_initial_load = page_token is None
+            min_videos_for_initial_load = 15
+            max_pages_to_fetch = 10  # Safety limit to prevent infinite loops
+
+            pages_fetched = 0
+
+            # Keep fetching until we have enough videos (for initial load) or fetched one page (for pagination)
+            while True:
+                videos, next_page_token = youtube_service.search_videos(
+                    query, max_results=app.config["MAX_VIDEOS_SEARCH_RESULTS"], page_token=current_page_token
+                )
+                pages_fetched += 1
+
+                for video in filter_service.filter_videos_streaming(videos):
+                    count += 1
+                    video_data = {
+                        "video_id": video.id,
+                        "title": video.title,
+                        "url": video.url,
+                        "thumbnail": video.thumbnail_url,
+                        "channel": video.channel.title,
+                        "channel_id": video.channel.id,
+                    }
+                    yield f"data: {json.dumps({'type': 'video', 'data': video_data})}\n\n"
+
+                # Stop conditions:
+                # 1. For pagination requests: always stop after one page
+                # 2. For initial load: stop if we have enough videos, no more pages, or hit safety limit
+                if not is_initial_load:
+                    break
+                if count >= min_videos_for_initial_load:
+                    break
+                if next_page_token is None:
+                    break
+                if pages_fetched >= max_pages_to_fetch:
+                    logging.warning(f"Reached max pages ({max_pages_to_fetch}) while searching for videos")
+                    break
+
+                # Continue to next page
+                current_page_token = next_page_token
 
             yield f"data: {json.dumps({'type': 'done', 'count': count, 'nextPageToken': next_page_token})}\n\n"
 
