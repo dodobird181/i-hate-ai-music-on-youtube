@@ -41,7 +41,19 @@ def search():
     videos = youtube_service.search_videos(query, max_results=app.config["MAX_VIDEOS_SEARCH_RESULTS"])
     filtered_videos = filter_service.filter_videos(videos)
 
-    return jsonify({"videos": filtered_videos})
+    videos_json = [
+        {
+            "video_id": v.id,
+            "title": v.title,
+            "url": v.url,
+            "thumbnail": v.thumbnail_url,
+            "channel": v.channel.title,
+            "channel_id": v.channel.id,
+        }
+        for v in filtered_videos
+    ]
+
+    return jsonify({"videos": videos_json})
 
 
 if __name__ == "__main__":

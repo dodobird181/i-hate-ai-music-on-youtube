@@ -1,30 +1,34 @@
 import asyncio
+import logging
+from typing import List
 
 from openai import AsyncOpenAI
+
+from models.video import Video
+
+logger = logging.getLogger(__name__)
 
 
 class FilterService:
 
-    def __init__(self, api_key, youtube_service):
+    def __init__(self, api_key: str, youtube_service):
         self.client = AsyncOpenAI(api_key=api_key)
         self.youtube_service = youtube_service
         self.batch_size = 5
 
-    def filter_videos(self, videos):
-        videos_needing_filter = [v for v in videos if v.get("needs_filtering", False)]
-        pre_filtered_videos = [v for v in videos if not v.get("needs_filtering", False)]
+    def filter_videos(self, videos: List[Video]) -> List[Video]:
+        """
+        Blocking call to get filtered videos.
+        """
+        if not videos:
+            return []
+        filtered = asyncio.run(self._async_filter_videos(videos))
+        return filtered
 
-        if not videos_needing_filter:
-            return pre_filtered_videos
-
-        filtered = asyncio.run(self._async_filter_videos(videos_needing_filter))
-        return pre_filtered_videos + filtered
-
-    async def _async_filter_videos(self, videos):
-
+    async def _async_filter_videos(self, videos: List[Video]) -> List[Video]:
         tasks = []
         for video in videos:
-            comments = self.youtube_service.get_comments(video["video_id"])
+            comments = self.youtube_service.get_comments(video.id)
             tasks.append(self._check_video(video, comments))
 
         results = []
@@ -35,8 +39,9 @@ class FilterService:
 
         return [video for video, is_human in results if is_human]
 
-    async def _check_video(self, video, comments):
+    async def _check_video(self, video: Video, comments: List[str]) -> tuple[Video, bool]:
         if not comments:
+            logger.warning(f"No comments found for video {video.id}, filtering out")
             return video, False
 
         with open("QUERY.md", "r") as f:
@@ -44,7 +49,7 @@ class FilterService:
 
         comments_text = "\n".join(comments[:50])
         prompt = prompt_template.format(
-            video_title=video["title"], channel_name=video["channel"], comments=comments_text
+            video_title=video.title, channel_name=video.channel.title, comments=comments_text
         )
 
         try:
@@ -61,7 +66,15 @@ class FilterService:
                 max_tokens=10,
             )
 
-            result = response.choices[0].message.content.strip().upper()
-            return video, result == "HUMAN"
-        except Exception:
+            content = response.choices[0].message.content
+            if not content:
+                logger.warning(f"Empty response for video {video.id}")
+                return video, False
+
+            result = content.strip().upper()
+            is_human = result == "HUMAN"
+            logger.info(f"Video {video.id} classified as: {result}")
+            return video, is_human
+        except Exception as e:
+            logger.error(f"Error checking video {video.id}: {e}")
             return video, False
