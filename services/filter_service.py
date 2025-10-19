@@ -22,6 +22,10 @@ class FilterService:
         self.batch_size = 5
         self.max_comments = app.config["MAX_COMMENTS_TO_ASSESS_PER_VIDEO"]
 
+        # Load blocklist from file on initialization
+        blocklist_count = self.cache_service.load_blocklist_from_file()
+        logger.info(f"Loaded {blocklist_count} channels into blocklist")
+
     def filter_videos(self, videos: List[Video]) -> List[Video]:
         """
         Blocking call to get filtered videos.
@@ -69,7 +73,15 @@ class FilterService:
         return [video for video, is_human in results if is_human]
 
     async def _check_video(self, video: Video, comments: List[Comment]) -> tuple[Video, bool]:
-        # Check cache first
+        # Check blocklist first
+        if self.cache_service.is_channel_blocklisted(video.channel.id):
+            logger.info(
+                f"{video} from blocklisted channel {video.channel.title} ({video.channel.id}), filtering out..."
+            )
+            self.cache_service.cache_result(video.id, 0, False)
+            return video, False
+
+        # Check cache
         cached_result = self.cache_service.get_cached_result(video.id)
         if cached_result is not None:
             humanity_score, is_human = cached_result
