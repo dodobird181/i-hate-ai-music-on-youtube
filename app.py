@@ -57,7 +57,9 @@ def search():
             # Keep fetching until we have enough videos (for initial load) or fetched one page (for pagination)
             while True:
                 videos, next_page_token = youtube_service.search_videos(
-                    query, max_results=app.config["MAX_VIDEOS_SEARCH_RESULTS"], page_token=current_page_token
+                    query,
+                    max_results=app.config["MAX_VIDEOS_SEARCH_RESULTS"],
+                    page_token=current_page_token,
                 )
                 pages_fetched += 1
 

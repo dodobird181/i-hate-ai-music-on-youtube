@@ -15,7 +15,9 @@ class YouTubeService:
     def __init__(self, api_key: str):
         self.youtube = build("youtube", "v3", developerKey=api_key)
 
-    def search_videos(self, query: str, max_results=20, page_token: Optional[str] = None) -> Tuple[List[Video], Optional[str]]:
+    def search_videos(
+        self, query: str, max_results=20, page_token: Optional[str] = None
+    ) -> Tuple[List[Video], Optional[str]]:
         """
         Search youtube and return a list of videos along with the next page token.
         Returns: (videos, next_page_token)
@@ -31,11 +33,7 @@ class YouTubeService:
         if page_token:
             request_params["pageToken"] = page_token
 
-        videos_response = (
-            self.youtube.search()
-            .list(**request_params)
-            .execute()
-        )
+        videos_response = self.youtube.search().list(**request_params).execute()
         videos = []
         for item in videos_response.get("items", []):
             try:
@@ -44,18 +42,17 @@ class YouTubeService:
             except Video.ParseError as e:
                 logger.error(f"Failed to parse video data: {e}")
                 continue
-            finally:
-                logger.debug(
-                    "YouTubeService found: {}.".format(
-                        json.dumps(
-                            {
-                                "num_videos": len(videos),
-                                "videos": [str(x) for x in videos],
-                            },
-                            indent=2,
-                        ),
-                    )
-                )
+        logger.debug(
+            "YouTubeService found: {}.".format(
+                json.dumps(
+                    {
+                        "num_videos": len(videos),
+                        "videos": [str(x) for x in videos],
+                    },
+                    indent=2,
+                ),
+            )
+        )
         next_page_token = videos_response.get("nextPageToken")
         return videos, next_page_token
 
