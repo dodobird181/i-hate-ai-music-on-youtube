@@ -2,6 +2,7 @@ import os
 
 import dotenv
 
+from models import Video
 from services.youtube_service import YouTubeService
 
 # Get API key from env
@@ -14,7 +15,8 @@ if key is None:
 # Test scrape videos
 channel_id = "UCyRbMM2KCivYQHnVi8y8AAw"
 youtube_service = YouTubeService(api_key=key)
-videos = youtube_service.get_channel_videos(channel_id=channel_id, max_videos=1)
+videos = youtube_service.get_channel_videos(channel_id=channel_id, max_videos=10)
 print(f"Collected {len(videos)} videos from channel {channel_id}.")
-print(videos)
-[v.save() for v in videos]
+for video in videos:
+    video.label = Video.Label.AI
+    video.save()

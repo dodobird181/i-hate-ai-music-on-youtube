@@ -2,6 +2,8 @@ import json
 from dataclasses import dataclass
 from enum import Enum
 
+import isodate
+
 from models import Channel, db_conn, fill_from, find_none_paths
 
 
@@ -67,6 +69,7 @@ class Video:
     is_livestream: bool
     contains_synthetic_media: bool
     label: Label
+    duration_seconds: int
 
     @classmethod
     def from_data(cls, data: dict) -> "Video":
@@ -90,6 +93,10 @@ class Video:
                 "likeCount": None,
                 "favoriteCount": None,
                 "commentCount": None,
+            },
+            # duration_iso = response["items"][0]["contentDetails"]["duration"]
+            "contentDetails": {
+                "duration": None,
             },
             # True if the video is a live-stream
             "liveStreamingDetails": False,
@@ -136,6 +143,7 @@ class Video:
             is_livestream=bool("liveStreamingDetails" in data),
             contains_synthetic_media=data["status"]["containsSyntheticMedia"],
             label=cls.Label(data["label"]),
+            duration_seconds=int(isodate.parse_duration(data["contentDetails"]["duration"]).total_seconds()),
         )
 
     def save(self) -> None:
@@ -158,9 +166,10 @@ class Video:
                         comments,
                         is_livestream,
                         contains_synthetic_media,
-                        label
+                        label,
+                        duration_seconds
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     self.id,
@@ -177,6 +186,7 @@ class Video:
                     self.is_livestream,
                     self.contains_synthetic_media,
                     self.label.value,
+                    self.duration_seconds,
                 ),
             )
             connection.commit()
@@ -210,13 +220,14 @@ class Video:
                 is_livestream=row["is_livestream"],
                 contains_synthetic_media=row["contains_synthetic_media"],
                 label=cls.Label(row["label"]),
+                duration_seconds=row["duration_seconds"],
             )
 
     @classmethod
     def count(cls) -> int:
         with db_conn() as connection:
             cursor = connection.cursor()
-            cursor.execute("SELECT COUNT(*) FROM videos;")
+            cursor.execute("SELECT COUNT(*) FROM videos")
             return int(cursor.fetchone()[0])
 
     def __str__(self) -> str:

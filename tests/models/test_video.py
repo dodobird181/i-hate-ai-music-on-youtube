@@ -19,6 +19,9 @@ VIDEO_DATA = {
     },
     "status": {"containsSyntheticMedia": False},
     "liveStreamingDetails": {"foo": "bar"},
+    "contentDetails": {
+        "duration": "PT5M30S",
+    },
 }
 
 
@@ -35,6 +38,7 @@ def video_from_data():
         is_livestream=True,
         contains_synthetic_media=False,
         label=Video.Label.UNLABELLED,
+        duration_seconds=330,
     )
 
 
