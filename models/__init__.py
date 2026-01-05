@@ -14,19 +14,29 @@ else:
     DB_PATH = os.environ["DB_PATH"]
 
 
-# Initialize the database
-with open("models/schema.sql") as file:
-    schema = file.read()
-with sqlite3.connect(DB_PATH) as connection:
-    cursor = connection.cursor()
-    cursor.execute(schema)
+def init_db():
+    """
+    Initialize the database.
+    """
+    with open("models/schema.sql") as file:
+        schema = file.read()
+    with sqlite3.connect(DB_PATH) as connection:
+        cursor = connection.cursor()
+        cursor.execute(schema)
+
+
+# Initial initialization of the database (on module load)
+init_db()
 
 
 def db_conn() -> Connection:
     """
     Return a connection to the database.
     """
-    return sqlite3.connect(DB_PATH)
+    connection = sqlite3.connect(DB_PATH)
+    # returns database rows as dictionaries
+    connection.row_factory = sqlite3.Row
+    return connection
 
 
 def fill_from(source: dict, template: dict) -> dict:

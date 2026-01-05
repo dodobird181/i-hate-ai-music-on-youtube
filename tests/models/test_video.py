@@ -1,7 +1,6 @@
 import pytest
 
-from models.channel import Channel
-from models.video import Video
+from models import Channel, Video, db_conn
 
 VIDEO_DATA = {
     "id": "VVV5UmJNTTJLQ2l2WVFIblZpOHk4QUF3LncyZzRVV2NHcllR",
@@ -23,6 +22,22 @@ VIDEO_DATA = {
 }
 
 
+@pytest.fixture
+def video_from_data():
+    yield Video(
+        id="VVV5UmJNTTJLQ2l2WVFIblZpOHk4QUF3LncyZzRVV2NHcllR",
+        title="Test Video",
+        description="This is a video",
+        url=f"https://www.youtube.com/watch?v=VVV5UmJNTTJLQ2l2WVFIblZpOHk4QUF3LncyZzRVV2NHcllR",
+        thumbnail_url="example.com/image.png",
+        channel=Channel(id="UCyRbMM2KCivYQHnVi8y8AAw", title="Test Channel"),
+        stats=Video.Statistics(views=9000, likes=678, favorites=12, comments=62),
+        is_livestream=True,
+        contains_synthetic_media=False,
+        label=Video.Label.UNLABELLED,
+    )
+
+
 @pytest.mark.parametrize(
     "data",
     [
@@ -36,21 +51,9 @@ VIDEO_DATA = {
         (VIDEO_DATA | {"foobar": 123}),
     ],
 )
-def test_from_data_returns_video(data):
+def test_from_data_returns_video(data, video_from_data):
     video = Video.from_data(data)
-    expected = Video(
-        id="VVV5UmJNTTJLQ2l2WVFIblZpOHk4QUF3LncyZzRVV2NHcllR",
-        title="Test Video",
-        description="This is a video",
-        url=f"https://www.youtube.com/watch?v=VVV5UmJNTTJLQ2l2WVFIblZpOHk4QUF3LncyZzRVV2NHcllR",
-        thumbnail_url="example.com/image.png",
-        channel=Channel(id="UCyRbMM2KCivYQHnVi8y8AAw", title="Test Channel"),
-        stats=Video.Statistics(views=9000, likes=678, favorites=12, comments=62),
-        is_livestream=True,
-        contains_synthetic_media=False,
-        label=Video.Label.UNLABELLED,
-    )
-    assert video == expected
+    assert video == video_from_data
 
 
 @pytest.mark.parametrize(
@@ -93,3 +96,40 @@ def test_from_data_raises(data: dict, errors: str):
         pytest.fail("Should not be able to make a video with bad data.")
     except Video.ParseError as e:
         assert errors == e.errors
+
+
+@pytest.mark.use_db
+def test_save(video_from_data):
+    assert Video.count() == 0
+    video_from_data.save()
+
+    # saving increments count in database
+    assert Video.count() == 1
+
+    with db_conn() as connection:
+        cursor = connection.cursor()
+        cursor.execute("SELECT video_id FROM videos WHERE video_id = ?", (video_from_data.id,))
+        video_row = cursor.fetchone()
+
+        # Video has the correct id in the database
+        assert video_row["video_id"] == video_from_data.id
+
+    # saving again with the same id doesn't create another video
+    video_from_data.save()
+    assert Video.count() == 1
+
+
+@pytest.mark.use_db
+def test_from_db(video_from_data):
+
+    # Can retrieve saved video from database
+    video_from_data.save()
+    from_db = Video.from_db(video_from_data.id)
+    assert from_db == video_from_data
+
+    # Raise error when model is missing
+    try:
+        Video.from_db("FAKE_ID")
+        pytest.fail("The video should not exist.")
+    except Video.DoesNotExist as e:
+        pass

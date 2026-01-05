@@ -25,6 +25,18 @@ class Video:
         def __str__(self):
             return f"{self.raw_data}, with errors: {self.errors}."
 
+    class DoesNotExist(Exception):
+        """
+        The video does not exist in the database.
+        """
+
+        def __init__(self, id: str):
+            self.id = id
+            super().__init__()
+
+        def __str__(self):
+            return f"Video with id '{self.id}' does not exist."
+
     @dataclass
     class Statistics:
         """
@@ -169,7 +181,43 @@ class Video:
             )
             connection.commit()
 
-    def from_db(self, id: str) -> "Video": ...
+    @classmethod
+    def from_db(cls, id: str) -> "Video":
+        with db_conn() as connection:
+            cursor = connection.cursor()
+            cursor.execute("SELECT * FROM videos WHERE video_id = ?", (id,))
+            row = cursor.fetchone()
+
+            if row is None:
+                raise Video.DoesNotExist(id)
+
+            return Video(
+                id=row["video_id"],
+                title=row["title"],
+                description=row["description"],
+                url=row["url"],
+                thumbnail_url=row["thumbnail_url"],
+                channel=Channel(
+                    id=row["channel_id"],
+                    title=row["channel_title"],
+                ),
+                stats=cls.Statistics(
+                    views=row["views"],
+                    likes=row["likes"],
+                    favorites=row["favorites"],
+                    comments=row["comments"],
+                ),
+                is_livestream=row["is_livestream"],
+                contains_synthetic_media=row["contains_synthetic_media"],
+                label=cls.Label(row["label"]),
+            )
+
+    @classmethod
+    def count(cls) -> int:
+        with db_conn() as connection:
+            cursor = connection.cursor()
+            cursor.execute("SELECT COUNT(*) FROM videos;")
+            return int(cursor.fetchone()[0])
 
     def __str__(self) -> str:
         return '<Video: "{}", by {}>'.format(self.title, self.channel.title)
