@@ -27,8 +27,8 @@ class YouTubeService:
             "type": "video",
             "part": "snippet",
             "maxResults": max_results,
-            "videoCategoryId": "10",
-            "fields": "items(id/videoId,snippet(publishedAt,channelId,channelTitle,title,description,thumbnails/medium/url)),nextPageToken",
+            "videoCategoryId": "10",  # means in the music category
+            "fields": "items(id/videoId,snippet(publishedAt,channelId,channelTitle,title,description,thumbnails/medium/url)),nextPageToken,contentDetails(duration)",
         }
         if page_token:
             request_params["pageToken"] = page_token
@@ -41,7 +41,6 @@ class YouTubeService:
                 videos.append(video)
             except Video.ParseError as e:
                 logger.error(f"Failed to parse video data: {e}")
-                continue
         logger.debug(
             "YouTubeService found: {}.".format(
                 json.dumps(
@@ -55,6 +54,62 @@ class YouTubeService:
         )
         next_page_token = videos_response.get("nextPageToken")
         return videos, next_page_token
+
+    def get_channel_videos(self, channel_id: str, max_videos: int = 10) -> List[Video]:
+        """
+        Get any uploaded videos from a channel. FIXME: This probably doesn't work past 50 videos...
+        """
+
+        # 1. Get uploads playlist
+        request = self.youtube.channels().list(part="contentDetails", id=channel_id)
+        response = request.execute()
+        uploads_playlist_id = response["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
+
+        video_ids = []
+        next_page_token = None
+
+        # 2. Collect video IDs from the playlist
+        while True:
+            request_params = {
+                "part": "snippet",
+                "playlistId": uploads_playlist_id,
+                "maxResults": min(max_videos, 50),  # playlistItems max is 50 per page
+                "pageToken": next_page_token,
+                "fields": "items/snippet/resourceId/videoId,nextPageToken",
+            }
+            request = self.youtube.playlistItems().list(**request_params)
+            response = request.execute()
+
+            for item in response.get("items", []):
+                video_ids.append(item["snippet"]["resourceId"]["videoId"])
+                if len(video_ids) >= max_videos:
+                    break
+
+            if len(video_ids) >= max_videos:
+                break
+
+            next_page_token = response.get("nextPageToken")
+            if not next_page_token:
+                break
+
+        videos: List[Video] = []
+
+        # 3. Fetch full video details in batches of 50
+        for i in range(0, len(video_ids), 50):
+            batch_ids = video_ids[i : i + 50]
+            request = self.youtube.videos().list(
+                part="snippet,contentDetails,statistics,liveStreamingDetails,status", id=",".join(batch_ids)
+            )
+            response = request.execute()
+
+            for item in response.get("items", []):
+                try:
+                    video = Video.from_data(item)
+                    videos.append(video)
+                except Video.ParseError as e:
+                    logger.error(f"Failed to parse video data: {e}")
+
+        return videos[:max_videos]
 
     def get_comments(self, video_id: str, max_results: int) -> List[Comment]:
         try:
@@ -96,5 +151,5 @@ class YouTubeService:
             if e.__dict__["error_details"][0]["reason"] == "commentsDisabled":
                 # Expected that we will sometimes hit videos that have comments disabled...
                 return []
-            logger.error(f"Error fetching comments for video {video_id}: {e}")
+            logger.debug(f"Error fetching comments for video {video_id}: {e}")
             return []

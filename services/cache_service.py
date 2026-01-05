@@ -15,25 +15,31 @@ class CacheService:
         """Initialize the database and create tables if they don't exist."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS video_filters (
                     video_id TEXT PRIMARY KEY,
                     humanity_score INTEGER NOT NULL,
                     is_human BOOLEAN NOT NULL,
                     checked_at TIMESTAMP NOT NULL
                 )
-            """)
-            cursor.execute("""
+            """
+            )
+            cursor.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_checked_at
                 ON video_filters(checked_at)
-            """)
-            cursor.execute("""
+            """
+            )
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS blocklist_channels (
                     channel_id TEXT PRIMARY KEY,
                     channel_name TEXT,
                     added_at TIMESTAMP NOT NULL
                 )
-            """)
+            """
+            )
             conn.commit()
             logger.info(f"Database initialized at {self.db_path}")
 
