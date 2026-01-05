@@ -3,6 +3,7 @@ import logging
 from typing import List, Optional, Tuple
 
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from models.comment import Comment
 from models.video import Video
@@ -11,6 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 class YouTubeService:
+
+    class ChannelNotFound(Exception): ...
+
+    class PlaylistNotFound(Exception): ...
 
     def __init__(self, api_key: str):
         self.youtube = build("youtube", "v3", developerKey=api_key)
@@ -63,6 +68,8 @@ class YouTubeService:
         # 1. Get uploads playlist
         request = self.youtube.channels().list(part="contentDetails", id=channel_id)
         response = request.execute()
+        if "items" not in response:
+            raise self.ChannelNotFound()
         uploads_playlist_id = response["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
 
         video_ids = []
@@ -77,8 +84,14 @@ class YouTubeService:
                 "pageToken": next_page_token,
                 "fields": "items/snippet/resourceId/videoId,nextPageToken",
             }
-            request = self.youtube.playlistItems().list(**request_params)
-            response = request.execute()
+            try:
+                request = self.youtube.playlistItems().list(**request_params)
+                response = request.execute()
+            except HttpError as e:
+                if hasattr(e, "error_details") and isinstance(e.error_details, list):
+                    if e.error_details[0]["reason"] == "playlistNotFound":
+                        raise self.PlaylistNotFound() from e
+                raise e
 
             for item in response.get("items", []):
                 video_ids.append(item["snippet"]["resourceId"]["videoId"])
