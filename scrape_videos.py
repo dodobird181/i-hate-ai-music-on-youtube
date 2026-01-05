@@ -17,3 +17,4 @@ youtube_service = YouTubeService(api_key=key)
 videos = youtube_service.get_channel_videos(channel_id=channel_id, max_videos=1)
 print(f"Collected {len(videos)} videos from channel {channel_id}.")
 print(videos)
+[v.save() for v in videos]

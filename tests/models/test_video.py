@@ -48,6 +48,7 @@ def test_from_data_returns_video(data):
         stats=Video.Statistics(views=9000, likes=678, favorites=12, comments=62),
         is_livestream=True,
         contains_synthetic_media=False,
+        label=Video.Label.UNLABELLED,
     )
     assert video == expected
 

@@ -1,7 +1,8 @@
 import json
 from dataclasses import dataclass
+from enum import Enum
 
-from models import Channel, fill_from, find_none_paths
+from models import Channel, db_conn, fill_from, find_none_paths
 
 
 @dataclass
@@ -35,6 +36,15 @@ class Video:
         favorites: int
         comments: int
 
+    class Label(Enum):
+        """
+        Label for supervised learning (does NOT come from youtube).
+        """
+
+        UNLABELLED = "unlabelled"
+        HUMAN = "human"
+        AI = "ai"
+
     id: str
     title: str
     description: str
@@ -44,11 +54,12 @@ class Video:
     stats: Statistics
     is_livestream: bool
     contains_synthetic_media: bool
+    label: Label
 
     @classmethod
     def from_data(cls, data: dict) -> "Video":
 
-        # Roughly what the data should look like. The None values are required, and any other value is a default.
+        # What the video data should look like. The None values are required, and any other value is a default.
         data_template = {
             "id": None,
             "snippet": {
@@ -74,6 +85,8 @@ class Video:
                 # True if video is self-reported as AI
                 "containsSyntheticMedia": False,
             },
+            # Whether we have labelled this video as human-made, or AI, for ML-model training purposes.
+            "label": cls.Label.UNLABELLED.value,
         }
 
         # Fill the data template and raise on any leftover None(s)
@@ -110,7 +123,53 @@ class Video:
             ),
             is_livestream=bool("liveStreamingDetails" in data),
             contains_synthetic_media=data["status"]["containsSyntheticMedia"],
+            label=cls.Label(data["label"]),
         )
+
+    def save(self) -> None:
+        with db_conn() as connection:
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                    INSERT OR REPLACE INTO videos
+                    (
+                        video_id,
+                        title,
+                        description,
+                        url,
+                        thumbnail_url,
+                        channel_id,
+                        channel_title,
+                        views,
+                        likes,
+                        favorites,
+                        comments,
+                        is_livestream,
+                        contains_synthetic_media,
+                        label
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    self.id,
+                    self.title,
+                    self.description,
+                    self.url,
+                    self.thumbnail_url,
+                    self.channel.id,
+                    self.channel.title,
+                    self.stats.views,
+                    self.stats.likes,
+                    self.stats.favorites,
+                    self.stats.comments,
+                    self.is_livestream,
+                    self.contains_synthetic_media,
+                    self.label.value,
+                ),
+            )
+            connection.commit()
+
+    def from_db(self, id: str) -> "Video": ...
 
     def __str__(self) -> str:
         return '<Video: "{}", by {}>'.format(self.title, self.channel.title)

@@ -1,4 +1,32 @@
+import os
+import sqlite3
+import sys
+from sqlite3 import Connection
 from typing import List
+
+import dotenv
+
+# Resolve which database to connect to
+dotenv.load_dotenv()
+if "pytest" in sys.modules:
+    DB_PATH = os.environ["TEST_DB_PATH"]
+else:
+    DB_PATH = os.environ["DB_PATH"]
+
+
+# Initialize the database
+with open("models/schema.sql") as file:
+    schema = file.read()
+with sqlite3.connect(DB_PATH) as connection:
+    cursor = connection.cursor()
+    cursor.execute(schema)
+
+
+def db_conn() -> Connection:
+    """
+    Return a connection to the database.
+    """
+    return sqlite3.connect(DB_PATH)
 
 
 def fill_from(source: dict, template: dict) -> dict:
