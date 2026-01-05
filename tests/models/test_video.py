@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 
 from models import Channel, Video, db_conn
@@ -10,6 +12,7 @@ VIDEO_DATA = {
         "thumbnails": {"medium": {"url": "example.com/image.png"}},
         "channelId": "UCyRbMM2KCivYQHnVi8y8AAw",
         "channelTitle": "Test Channel",
+        "publishedAt": "2025-11-19T08:55:44Z",
     },
     "statistics": {
         "viewCount": 9000,
@@ -39,6 +42,7 @@ def video_from_data():
         contains_synthetic_media=False,
         label=Video.Label.UNLABELLED,
         duration_seconds=330,
+        published_at=datetime.fromisoformat("2025-11-19T08:55:44+00:00"),
     )
 
 
@@ -76,6 +80,7 @@ def test_from_data_returns_video(data, video_from_data):
                 "Path snippet.thumbnails.medium.url cannot be None!",
                 "Path snippet.channelId cannot be None!",
                 "Path snippet.channelTitle cannot be None!",
+                "Path snippet.publishedAt cannot be None!",
             ],
         ),
         # Missing partial sub-dictionary in data
@@ -88,6 +93,7 @@ def test_from_data_returns_video(data, video_from_data):
                     "thumbnails": {"medium": {"url": None}},
                     "channelId": "UCyRbMM2KCivYQHnVi8y8AAw",
                     "channelTitle": "Test Channel",
+                    "publishedAt": "2025-11-19T08:55:44Z",
                 },
             },
             ["Path snippet.thumbnails.medium.url cannot be None!"],

@@ -13,5 +13,6 @@ CREATE TABLE IF NOT EXISTS videos (
     is_livestream BOOLEAN NOT NULL,
     contains_synthetic_media BOOLEAN NOT NULL,
     label TEXT NOT NULL,
-    duration_seconds INTEGER NOT NULL
+    duration_seconds INTEGER NOT NULL,
+    published_at TEXT NOT NULL
 )

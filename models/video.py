@@ -1,5 +1,6 @@
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 
 import isodate
@@ -70,6 +71,7 @@ class Video:
     contains_synthetic_media: bool
     label: Label
     duration_seconds: int
+    published_at: datetime
 
     @classmethod
     def from_data(cls, data: dict) -> "Video":
@@ -87,6 +89,7 @@ class Video:
                 },
                 "channelId": None,
                 "channelTitle": None,
+                "publishedAt": None,
             },
             "statistics": {
                 "viewCount": None,
@@ -144,6 +147,7 @@ class Video:
             contains_synthetic_media=data["status"]["containsSyntheticMedia"],
             label=cls.Label(data["label"]),
             duration_seconds=int(isodate.parse_duration(data["contentDetails"]["duration"]).total_seconds()),
+            published_at=datetime.fromisoformat(data["snippet"]["publishedAt"].replace("Z", "+00:00")),
         )
 
     def save(self) -> None:
@@ -167,9 +171,10 @@ class Video:
                         is_livestream,
                         contains_synthetic_media,
                         label,
-                        duration_seconds
+                        duration_seconds,
+                        published_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     self.id,
@@ -187,6 +192,7 @@ class Video:
                     self.contains_synthetic_media,
                     self.label.value,
                     self.duration_seconds,
+                    self.published_at.isoformat(),
                 ),
             )
             connection.commit()
@@ -221,6 +227,7 @@ class Video:
                 contains_synthetic_media=row["contains_synthetic_media"],
                 label=cls.Label(row["label"]),
                 duration_seconds=row["duration_seconds"],
+                published_at=datetime.fromisoformat(row["published_at"]),
             )
 
     @classmethod
