@@ -1,9 +1,11 @@
 import json
 import logging
+from datetime import datetime
 from typing import List, Optional, Tuple
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from isodate import parse_duration
 
 from models import Comment, Video
 
@@ -56,7 +58,7 @@ class OfficialYouTubeService(BaseYoutubeService):
         data = fill_from(data, data_template)
         none_paths = find_none_paths(data)
         if len(none_paths) > 0:
-            raise cls.ParseError(json.dumps(data, indent=2), [f"Path {p} cannot be None!" for p in none_paths])
+            raise cls.VideoParseError(json.dumps(data, indent=2), [f"Path {p} cannot be None!" for p in none_paths])
 
         video_id = None
         if isinstance(data["id"], str):
@@ -66,28 +68,24 @@ class OfficialYouTubeService(BaseYoutubeService):
             # Youtube's Search API returns video IDs in a second nested dictionary.
             video_id = data["id"]["videoId"]
         else:
-            raise cls.ParseError(json.dumps(data, indent=2), ["Could not parse video_id from data!"])
+            raise cls.VideoParseError(json.dumps(data, indent=2), ["Could not parse video_id from data!"])
 
-        return cls(
+        return Video(
             id=str(video_id),
             title=str(data["snippet"]["title"]),
             description=str(data["snippet"]["description"]),
             url=f"https://www.youtube.com/watch?v={video_id}",
             thumbnail_url=str(data["snippet"]["thumbnails"]["medium"]["url"]),
-            channel=Channel(
-                id=str(data["snippet"]["channelId"]),
-                title=str(data["snippet"]["channelTitle"]),
-            ),
-            stats=cls.Statistics(
-                views=int(data["statistics"]["viewCount"]),
-                likes=int(data["statistics"]["likeCount"]),
-                favorites=int(data["statistics"]["favoriteCount"]),
-                comments=int(data["statistics"]["commentCount"]),
-            ),
+            channel_id=str(data["snippet"]["channelId"]),
+            channel_name=str(data["snippet"]["channelTitle"]),
+            views=int(data["statistics"]["viewCount"]),
+            likes=int(data["statistics"]["likeCount"]),
+            favorites=int(data["statistics"]["favoriteCount"]),
+            comments=int(data["statistics"]["commentCount"]),
             is_livestream=bool("liveStreamingDetails" in data),
             contains_synthetic_media=data["status"]["containsSyntheticMedia"],
-            label=cls.Label(data["label"]),
-            duration_seconds=int(isodate.parse_duration(data["contentDetails"]["duration"]).total_seconds()),
+            label=Video.Label(data["label"]),
+            duration_seconds=int(parse_duration(data["contentDetails"]["duration"]).total_seconds()),
             published_at=datetime.fromisoformat(data["snippet"]["publishedAt"].replace("Z", "+00:00")),
         )
 
