@@ -1,11 +1,11 @@
 from typing import List
 
-import pytest
+from pytest import mark
 
-from models import fill_from, find_none_paths
+from youtube import fill_from, find_none_paths
 
 
-@pytest.mark.parametrize(
+@mark.parametrize(
     "source, expected",
     (
         # Replacing None with a primitive value works
@@ -98,7 +98,7 @@ def test_fill_from_template_value_preserved():
     }
 
 
-@pytest.mark.parametrize(
+@mark.parametrize(
     "obj, expected",
     (
         # Empty list when no None paths

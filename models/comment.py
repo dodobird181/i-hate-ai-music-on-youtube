@@ -1,29 +1,12 @@
-from dataclasses import dataclass
-from typing import Optional
+from peewee import CharField, DateTimeField, ForeignKeyField, TextField
+
+from . import BaseModel, Video
 
 
-@dataclass
-class Comment:
-    """
-    A YouTube comment.
-    """
+class Comment(BaseModel):
 
-    text: str
-    is_reply: bool
-    comment_id: str
-    author: str = ""
-    parent_id: Optional[str] = None
-
-    @property
-    def is_top_level(self) -> bool:
-        return not self.is_reply
-
-    def __str__(self) -> str:
-        if self.is_reply:
-            return "ID: {}. Author: {}. Reply to {}. Text: {}.".format(
-                self.comment_id,
-                self.author,
-                self.parent_id,
-                self.text,
-            )
-        return "ID: {}. Author: {}. Text: {}.".format(self.comment_id, self.author, self.text)
+    id = CharField(max_length=255, primary_key=True)
+    text = TextField()
+    video = ForeignKeyField(model=Video)
+    published_at = DateTimeField()
+    author_channel_id = CharField(max_length=255)

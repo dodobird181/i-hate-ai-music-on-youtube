@@ -5,17 +5,94 @@ from typing import List, Optional, Tuple
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from models.comment import Comment
-from models.video import Video
+from models import Comment, Video
+
+from . import BaseYoutubeService, fill_from, find_none_paths
 
 logger = logging.getLogger(__name__)
 
 
-class YouTubeService:
+class OfficialYouTubeService(BaseYoutubeService):
 
-    class ChannelNotFound(Exception): ...
+    @classmethod
+    def _video_from_data(cls, data: dict) -> Video:
 
-    class PlaylistNotFound(Exception): ...
+        # What the video data should look like. The None values are required, and any other value is a default.
+        data_template = {
+            "id": None,
+            "snippet": {
+                "title": None,
+                "description": None,
+                "thumbnails": {
+                    "medium": {
+                        "url": None,
+                    },
+                },
+                "channelId": None,
+                "channelTitle": None,
+                "publishedAt": None,
+            },
+            "statistics": {
+                "viewCount": None,
+                "likeCount": None,
+                "favoriteCount": None,
+                "commentCount": None,
+            },
+            # duration_iso = response["items"][0]["contentDetails"]["duration"]
+            "contentDetails": {
+                "duration": None,
+            },
+            # True if the video is a live-stream
+            "liveStreamingDetails": False,
+            "status": {
+                # True if video is self-reported as AI
+                "containsSyntheticMedia": False,
+            },
+            # Whether we have labelled this video as human-made, or AI, for ML-model training purposes.
+            "label": Video.Label.UNLABELLED.value,
+        }
+
+        # Fill the data template and raise on any leftover None(s)
+        data = fill_from(data, data_template)
+        none_paths = find_none_paths(data)
+        if len(none_paths) > 0:
+            raise cls.ParseError(json.dumps(data, indent=2), [f"Path {p} cannot be None!" for p in none_paths])
+
+        video_id = None
+        if isinstance(data["id"], str):
+            # Youtube's Videos API returns video IDs as a string.
+            video_id = data["id"]
+        elif isinstance(data["id"], dict) and "videoId" in data["id"]:
+            # Youtube's Search API returns video IDs in a second nested dictionary.
+            video_id = data["id"]["videoId"]
+        else:
+            raise cls.ParseError(json.dumps(data, indent=2), ["Could not parse video_id from data!"])
+
+        return cls(
+            id=str(video_id),
+            title=str(data["snippet"]["title"]),
+            description=str(data["snippet"]["description"]),
+            url=f"https://www.youtube.com/watch?v={video_id}",
+            thumbnail_url=str(data["snippet"]["thumbnails"]["medium"]["url"]),
+            channel=Channel(
+                id=str(data["snippet"]["channelId"]),
+                title=str(data["snippet"]["channelTitle"]),
+            ),
+            stats=cls.Statistics(
+                views=int(data["statistics"]["viewCount"]),
+                likes=int(data["statistics"]["likeCount"]),
+                favorites=int(data["statistics"]["favoriteCount"]),
+                comments=int(data["statistics"]["commentCount"]),
+            ),
+            is_livestream=bool("liveStreamingDetails" in data),
+            contains_synthetic_media=data["status"]["containsSyntheticMedia"],
+            label=cls.Label(data["label"]),
+            duration_seconds=int(isodate.parse_duration(data["contentDetails"]["duration"]).total_seconds()),
+            published_at=datetime.fromisoformat(data["snippet"]["publishedAt"].replace("Z", "+00:00")),
+        )
+
+    @classmethod
+    def _comment_from_data(cls, data: dict) -> Video: ...
 
     def __init__(self, api_key: str):
         self.youtube = build("youtube", "v3", developerKey=api_key)
@@ -42,9 +119,9 @@ class YouTubeService:
         videos = []
         for item in videos_response.get("items", []):
             try:
-                video = Video.from_data(item)
+                video = self._video_from_data(item)
                 videos.append(video)
-            except Video.ParseError as e:
+            except self.VideoParseError as e:
                 logger.error(f"Failed to parse video data: {e}")
         logger.debug(
             "YouTubeService found: {}.".format(
@@ -62,7 +139,7 @@ class YouTubeService:
 
     def get_channel_videos(self, channel_id: str, max_videos: int = 10) -> List[Video]:
         """
-        Get any uploaded videos from a channel. FIXME: This probably doesn't work past 50 videos...
+        Get any uploaded videos from a channel.
         """
 
         # 1. Get uploads playlist
@@ -117,9 +194,9 @@ class YouTubeService:
 
             for item in response.get("items", []):
                 try:
-                    video = Video.from_data(item)
+                    video = self._video_from_data(item)
                     videos.append(video)
-                except Video.ParseError as e:
+                except self.VideoParseError as e:
                     logger.error(f"Failed to parse video data: {e}")
 
         return videos[:max_videos]
@@ -162,7 +239,7 @@ class YouTubeService:
             return comments
         except Exception as e:
             if e.__dict__["error_details"][0]["reason"] == "commentsDisabled":
-                # Expected that we will sometimes hit videos that have comments disabled...
+                # It's expected that we will sometimes hit videos with comments disabled...
                 return []
-            logger.debug(f"Error fetching comments for video {video_id}: {e}")
+            logger.error(f"Error fetching comments for video {video_id}.", exc_info=e)
             return []
