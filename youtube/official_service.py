@@ -1,8 +1,10 @@
 import json
 import logging
 from datetime import datetime
+from os import getenv
 from typing import List, Optional, Tuple
 
+from dotenv import load_dotenv
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from isodate import parse_duration
@@ -15,6 +17,18 @@ logger = logging.getLogger(__name__)
 
 
 class OfficialYouTubeService(BaseYoutubeService):
+
+    @classmethod
+    def build_from_env(cls) -> "OfficialYouTubeService":
+
+        # Get API key from env
+        load_dotenv()
+        KEY_NAME = "YOUTUBE_API_KEY"
+        key = getenv(KEY_NAME)
+        if key is None:
+            raise ValueError(f"Expected {KEY_NAME} to exist in the environment!")
+
+        return cls(api_key=key)
 
     @classmethod
     def _video_from_data(cls, data: dict) -> Video:
@@ -35,10 +49,10 @@ class OfficialYouTubeService(BaseYoutubeService):
                 "publishedAt": None,
             },
             "statistics": {
-                "viewCount": None,
-                "likeCount": None,
-                "favoriteCount": None,
-                "commentCount": None,
+                "viewCount": 0,
+                "likeCount": 0,
+                "favoriteCount": 0,
+                "commentCount": 0,
             },
             # duration_iso = response["items"][0]["contentDetails"]["duration"]
             "contentDetails": {
@@ -84,13 +98,54 @@ class OfficialYouTubeService(BaseYoutubeService):
             comments=int(data["statistics"]["commentCount"]),
             is_livestream=bool("liveStreamingDetails" in data),
             contains_synthetic_media=data["status"]["containsSyntheticMedia"],
-            label=Video.Label(data["label"]),
+            label=data["label"],
             duration_seconds=int(parse_duration(data["contentDetails"]["duration"]).total_seconds()),
             published_at=datetime.fromisoformat(data["snippet"]["publishedAt"].replace("Z", "+00:00")),
         )
 
     @classmethod
-    def _comment_from_data(cls, data: dict) -> Video: ...
+    def _comment_from_data(cls, data: dict, video: Video) -> Comment:
+
+        NO_PARENT = "NO_PARENT"
+
+        # What the comment data should look like. The None values are required, and any other value is a default.
+        data_template = {
+            "id": None,
+            "snippet": {
+                "textOriginal": None,
+                "authorDisplayName": None,
+                "authorChannelId": {"value": None},
+                "videoId": None,
+                "publishedAt": None,
+                "parentId": NO_PARENT,
+                "likeCount": 0,
+            },
+        }
+
+        # Fill the data template and raise on any leftover None(s)
+        data = fill_from(data, data_template)
+        none_paths = find_none_paths(data)
+        if len(none_paths) > 0:
+            raise cls.VideoParseError(json.dumps(data, indent=2), [f"Path {p} cannot be None!" for p in none_paths])
+
+        # Set isReply based on whether the comment has a parent
+        if data["snippet"]["parentId"] == NO_PARENT:
+            data["snippet"]["parentId"] = None
+            data["snippet"]["isReply"] = False
+        else:
+            data["snippet"]["isReply"] = True
+
+        return Comment(
+            id=str(data["id"]),
+            text=str(data["snippet"]["textOriginal"]),
+            video=video,
+            author_channel_id=str(data["snippet"]["authorChannelId"]["value"]),
+            author_display_name=str(data["snippet"]["authorDisplayName"]),
+            likes=int(data["snippet"]["likeCount"]),
+            is_reply=bool(data["snippet"]["isReply"]),
+            parent_comment_id=data["snippet"]["parentId"],  # No str conversion because it may be None
+            published_at=datetime.fromisoformat(data["snippet"]["publishedAt"].replace("Z", "+00:00")),
+        )
 
     def __init__(self, api_key: str):
         self.youtube = build("youtube", "v3", developerKey=api_key)
@@ -201,6 +256,7 @@ class OfficialYouTubeService(BaseYoutubeService):
 
     def get_comments(self, video_id: str, max_results: int) -> List[Comment]:
         try:
+            video = Video.get(id=video_id)
             comments_response = (
                 self.youtube.commentThreads()
                 .list(videoId=video_id, part="snippet,replies", maxResults=max_results, order="relevance")
@@ -208,36 +264,31 @@ class OfficialYouTubeService(BaseYoutubeService):
             )
             comments = []
             for item in comments_response.get("items", []):
-                top_level_comment = item["snippet"]["topLevelComment"]
-                top_level_snippet = top_level_comment["snippet"]
-                top_level_id = top_level_comment["id"]
+                # top_level_comment = item["snippet"]["topLevelComment"]
+                # top_level_snippet = top_level_comment["snippet"]
+                # top_level_id = top_level_comment["id"]
+                # Comment(
+                #     text=top_level_snippet["textOriginal"],
+                #     is_reply=False,
+                #     comment_id=top_level_id,
+                #     author=top_level_snippet.get("authorDisplayName", ""),
+                #     parent_id=None,
+                # )
 
-                comments.append(
-                    Comment(
-                        text=top_level_snippet["textOriginal"],
-                        is_reply=False,
-                        comment_id=top_level_id,
-                        author=top_level_snippet.get("authorDisplayName", ""),
-                        parent_id=None,
-                    )
-                )
+                comment = self._comment_from_data(item["snippet"]["topLevelComment"], video)
+                comments.append(comment)
+
                 if "replies" in item:
                     # Grab replies that are 1 "layer" deep as well...
                     for reply in item["replies"]["comments"]:
-                        reply_snippet = reply["snippet"]
-                        comments.append(
-                            Comment(
-                                text=reply_snippet["textOriginal"],
-                                is_reply=True,
-                                comment_id=reply["id"],
-                                author=reply_snippet.get("authorDisplayName", ""),
-                                parent_id=reply_snippet.get("parentId", top_level_id),
-                            )
-                        )
+                        comment = self._comment_from_data(reply, video)
+                        comments.append(comment)
+
             return comments
         except Exception as e:
             if e.__dict__["error_details"][0]["reason"] == "commentsDisabled":
                 # It's expected that we will sometimes hit videos with comments disabled...
+                logger.info(f"Could not fetch comments for video {video_id}, the video has comments disabled.")
                 return []
-            logger.error(f"Error fetching comments for video {video_id}.", exc_info=e)
+            logger.error(f"Could not fetch comments for video {video_id}.", exc_info=e)
             return []

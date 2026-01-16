@@ -1,32 +1,33 @@
-import os
-
-import dotenv
-
 from ai_channels import CHANNELS
 from models import Video
-from services_OLD.youtube_service import YouTubeService
+from youtube import OfficialYouTubeService
 
-# Get API key from env
-dotenv.load_dotenv()
-KEY_NAME = "YOUTUBE_API_KEY"
-key = os.getenv(KEY_NAME)
-if key is None:
-    raise ValueError(f"Expected {KEY_NAME} to exist in the environment!")
-
-CHANNELS = ["UCm9HA7dFbnkBmYweSt-6D4g"]
-
-# Test scrape videos
-for channel_id in CHANNELS:
-    youtube_service = YouTubeService(api_key=key)
+# Scrape videos
+for channel_id in [
+    "UCLdqZBVvWa174TnYyLC-IAg",
+    "UCqa_gEpx9XO7BoYkBD7kktQ",
+    "UCJeBQabyLa_FvMxb6G67lkw",
+    "UCLJpFgv7AUCLyMKFImVYymQ",
+    "UCmey-edYKh4rJ6fn4albYIg",
+    "UCN2GlHjuUD2KA6vh01rjn_Q",
+    "UCR4P2JbCWZie0w6xQZJLDCQ",
+    "UCm1AAvgMlMsUv49S9Qt2EDA",
+    "UCr5v6l4EIKiImmJU-COJ0Sg",
+    "UCFEXvJaxLUGJaCVxOGx8amw",
+]:
+    youtube = OfficialYouTubeService.build_from_env()
     try:
-        videos = youtube_service.get_channel_videos(channel_id=channel_id, max_videos=100)
+        videos = youtube.get_channel_videos(channel_id=channel_id, max_videos=100)
         print(f"Collected {len(videos)} videos from channel {channel_id}.")
         for video in videos:
-            video.label = Video.Label.HUMAN
-            video.save()
-    except YouTubeService.ChannelNotFound:
+            video.label = Video.Label.HUMAN.value  # type: ignore
+            if Video.filter(id=video.id).select().count() == 0:
+                video.save(force_insert=True)
+            else:
+                video.save()
+    except OfficialYouTubeService.ChannelNotFound:
         print(f"Channel not found: {channel_id}.")
         continue
-    except YouTubeService.PlaylistNotFound:
+    except OfficialYouTubeService.PlaylistNotFound:
         print(f"Playlist not found for channel: {channel_id}.")
         continue
