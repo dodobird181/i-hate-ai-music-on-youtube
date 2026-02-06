@@ -149,7 +149,6 @@ class OfficialYouTubeService:
                 "favoriteCount": 0,
                 "commentCount": 0,
             },
-            # duration_iso = response["items"][0]["contentDetails"]["duration"]
             "contentDetails": {
                 "duration": None,
             },
