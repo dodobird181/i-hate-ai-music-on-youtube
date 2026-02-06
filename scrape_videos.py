@@ -15,7 +15,7 @@ for channel_id in [
     "UCr5v6l4EIKiImmJU-COJ0Sg",
     "UCFEXvJaxLUGJaCVxOGx8amw",
 ]:
-    youtube = OfficialYouTubeService.build_from_env()
+    youtube = OfficialYouTubeService.build_from_env(origin=Video.Origin.SCRAPED)
     try:
         videos = youtube.get_channel_videos(channel_id=channel_id, max_videos=100)
         print(f"Collected {len(videos)} videos from channel {channel_id}.")

@@ -12,6 +12,13 @@ class Video(BaseModel):
         HUMAN = "human"
         AI = "ai"
 
+    class Origin(Enum):
+        # Scraped from youtube (usually labeled by the scraper)
+        SCRAPED = "scraped"
+        # Video came from the app, so trust the label less and probably
+        # will want to exclude from training.
+        APP = "app"
+
     id = CharField(primary_key=True, max_length=255)
     title = CharField(max_length=1024)
     description = TextField()
@@ -25,5 +32,6 @@ class Video(BaseModel):
     views = IntegerField()
     contains_synthetic_media = BooleanField()
     label = CharField(max_length=255, default=Label.UNLABELLED.value)
+    origin = CharField(max_length=255)
     duration_seconds = IntegerField()
     published_at = DateTimeField()

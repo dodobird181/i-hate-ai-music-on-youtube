@@ -1,9 +1,10 @@
 from dataclasses import dataclass
+from json import dumps
 from re import findall, sub
 from typing import List
 
 from emoji import demojize, emoji_list
-from numpy import mean, ndarray, std
+from numpy import mean, ndarray, std, triu_indices_from
 from sklearn.metrics.pairwise import cosine_similarity
 from textstat import textstat
 
@@ -31,10 +32,14 @@ class VideoFeatures:
         percent_unique_words: float
         # The percent of comments containing any number of generic praise phrases (these are explicitly defined)
         generic_praise_ratio: float
-        # Standard deviation, variance, and mean similarity between comment embeddings
+        # Standard deviation, variance, mean similarity, and similarity standard deviation between comment embeddings
         std: float
         variance: float
         mean_similarity: float
+        similarity_std: float
+
+        # Serialized string of all comment embeddings
+        embeddings: str
 
     @dataclass
     class Description:
@@ -56,6 +61,12 @@ def _clean_comment(text: str) -> str:
     text = demojize(text)
     sub(URL_REGEX, "", text)
     return text
+
+
+def _average_seconds_between_channel_uploads(self, video: Video) -> int:
+    channel_videos = Video.select().where(Video.channel_id == video.channel_id)
+    datetimes = [x.published_at for x in channel_videos]
+    # TODO
 
 
 def extract_videos(videos: List[Video]) -> List[VideoFeatures]:
@@ -132,12 +143,18 @@ def extract(video: Video, comments: list[Comment]) -> VideoFeatures:
         emoji_density = len(emoji_list(dirty_comment_blob)) / total_words
         generic_praise_ratio = num_generic_praise / num_comments
 
-        comment_std = std(embeddings)
+        sim = cosine_similarity(embeddings)
+        upper = sim[triu_indices_from(sim, k=1)]
+
+        mean_similarity = upper.mean()
+        std_similarity = upper.std()
         comment_variance_score = mean(std(embeddings, axis=0))
         similarity_matrix = cosine_similarity(embeddings)
         N = similarity_matrix.shape[0]
-        mean_similarity = (similarity_matrix.sum() - N) / (N * (N - 1))
         percent_unique_words = len(unique_words) / total_words
+
+        sims = similarity_matrix[triu_indices_from(similarity_matrix, k=1)]
+        similarity_std = float(std(sims))
 
         comments_features = VideoFeatures.Comments(
             average_len=average_len,
@@ -146,9 +163,11 @@ def extract(video: Video, comments: list[Comment]) -> VideoFeatures:
             emoji_density=emoji_density,
             percent_unique_words=percent_unique_words,
             generic_praise_ratio=generic_praise_ratio,
-            std=float(comment_std),
+            std=float(std_similarity),
             variance=float(comment_variance_score),
             mean_similarity=float(mean_similarity),
+            similarity_std=similarity_std,
+            embeddings=dumps(embeddings.tolist()),
         )
     else:
         comments_features = VideoFeatures.Comments(
@@ -161,6 +180,8 @@ def extract(video: Video, comments: list[Comment]) -> VideoFeatures:
             std=0,
             variance=0,
             mean_similarity=0,
+            similarity_std=0,
+            embeddings=embeddings,
         )
 
     return VideoFeatures(description=desc_features, comments=comments_features, embeddings=embeddings)

@@ -1,5 +1,6 @@
 from pytest import fail, mark
 
+from models import Video
 from tests.conftest import VIDEO_DATA
 from youtube import OfficialYouTubeService
 
@@ -18,7 +19,8 @@ from youtube import OfficialYouTubeService
     ],
 )
 def test_video_from_data_returns_video(data, video_from_data):
-    video = OfficialYouTubeService._video_from_data(VIDEO_DATA)
+    youtube = OfficialYouTubeService.build_from_env(origin=Video.Origin.APP)
+    video = youtube._video_from_data(VIDEO_DATA)
     assert video == video_from_data
 
 
@@ -60,7 +62,8 @@ def test_video_from_data_returns_video(data, video_from_data):
 )
 def test_from_data_raises(data: dict, errors: str):
     try:
-        OfficialYouTubeService._video_from_data(data)
+        youtube = OfficialYouTubeService.build_from_env(origin=Video.Origin.APP)
+        youtube._video_from_data(data)
         fail("Should not be able to make a video with bad data.")
     except OfficialYouTubeService.VideoParseError as e:
         assert errors == e.errors

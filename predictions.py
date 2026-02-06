@@ -1,5 +1,5 @@
 from dataclasses import asdict
-from logging import getLogger
+from logging import WARNING, getLogger
 from time import perf_counter
 
 from lightgbm import Booster
@@ -12,7 +12,7 @@ from models import Comment, Video
 logger = getLogger(__name__)
 
 
-class VideoLabeler:
+class _VideoLabeler:
 
     MODEL_PATH = "video_model.txt"
 
@@ -31,24 +31,50 @@ def predict(video, threshold=0.7) -> Video.Label:
     comments = Comment.select().where(Comment.video == video.id)
     features = extract(video, comments)
     video_data = asdict(features.description) | asdict(features.comments)
-    pred_category = VideoLabeler().predict(DataFrame([video_data]))
+    pred_category = _VideoLabeler().predict(DataFrame([video_data]))
+
+    import json
+
+    logger.debug(f"Video {video.id} {video.title} by {video.channel_name} has humanity score of {pred_category[0]:0.2f}.")  # type: ignore
+    logger.debug(json.dumps(video_data, indent=2))
 
     if float(pred_category[0]) >= threshold:  # type: ignore
         return Video.Label.HUMAN
     return Video.Label.AI
 
 
-videos = [
-    x
-    for x in Video.select()
-    .where((Video.duration_seconds > 60) & (Video.comments >= 50))
-    .order_by(fn.Random())
-    .limit(100)
-]
-for video in videos:
-    start = perf_counter()
-    pred = predict(video)
-    end = perf_counter()
-    logger.info(
-        f'Predicted video "{video.title}" by channel {video.channel_name} is {pred.name} in {end - start:.6f} seconds.'
-    )
+if __name__ == "__main__":
+
+    def predict_dummy(video, threshold=0.7) -> dict:
+
+        comments = Comment.select().where(Comment.video == video.id)
+        features = extract(video, comments)
+        video_data = asdict(features.description) | asdict(features.comments)
+        return video_data
+
+    logger.setLevel(WARNING)
+    videos = [
+        x
+        for x in Video.select().where(
+            (Video.duration_seconds > 60) & (Video.comments >= 50) & (Video.origin == Video.Origin.APP.value)
+        )
+        # .where(Video.id == "X0X12AD7nK4")
+        .order_by(fn.Random()).limit(50)
+    ]
+    videos = [predict_dummy(x) for x in videos]
+    avg = {k: sum(d[k] for d in videos) / len(videos) for k in videos[0]}
+    print("Average APP feature-list:")
+    print(avg)
+
+    videos = [
+        x
+        for x in Video.select().where(
+            (Video.duration_seconds > 60) & (Video.comments >= 50) & (Video.origin == Video.Origin.SCRAPED.value)
+        )
+        # .where(Video.id == "X0X12AD7nK4")
+        .order_by(fn.Random()).limit(50)
+    ]
+    videos = [predict_dummy(x) for x in videos]
+    avg = {k: sum(d[k] for d in videos) / len(videos) for k in videos[0]}
+    print("Average SCRAPED feature-list:")
+    print(avg)

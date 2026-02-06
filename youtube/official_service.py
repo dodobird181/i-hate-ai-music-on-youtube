@@ -1,8 +1,9 @@
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 from os import getenv
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional
 
 from dotenv import load_dotenv
 from googleapiclient.discovery import build
@@ -11,15 +12,106 @@ from isodate import parse_duration
 
 from models import Comment, Video
 
-from . import BaseYoutubeService, fill_from, find_none_paths
+from . import fill_from, find_none_paths
 
 logger = logging.getLogger(__name__)
 
 
-class OfficialYouTubeService(BaseYoutubeService):
+class OfficialYouTubeService:
+
+    class YoutubeError(Exception): ...
+
+    class NotFoundError(YoutubeError): ...
+
+    class ParseError(Exception):
+        """
+        Something went wrong while parsing raw data from youtube.
+        """
+
+        def __init__(self, raw_data: str, errors: list[str]):
+            self.raw_data = raw_data
+            self.errors = errors
+            super().__init__()
+
+        def __str__(self):
+            return f"{self.raw_data}, with errors: {self.errors}."
+
+    class ChannelNotFound(NotFoundError): ...
+
+    class PlaylistNotFound(NotFoundError): ...
+
+    class VideoParseError(ParseError): ...
+
+    class CommentParseError(ParseError): ...
+
+    class API:
+        """
+        Each subclass here represents a different youtube API query.
+        """
+
+        class Search:
+
+            @staticmethod
+            def execute(youtube: Any, query: str, max_results=20, page_token: Optional[str] = None) -> dict:
+                if max_results > 50 or max_results < 0:
+                    raise ValueError(f"max_results must be in [0, 50]")
+                return (
+                    youtube.search().list(
+                        q=query,
+                        type="video",
+                        part="snippet",
+                        maxResults=max_results,
+                        fields=("items(id/videoId),nextPageToken"),
+                        pageToken=page_token,
+                        # "videoCategoryId": "10",  # Music
+                    )
+                ).execute()
+
+            @dataclass
+            class Response:
+                video_ids: List[str]
+                next_page_token: Optional[str]
+
+        class Videos:
+
+            @staticmethod
+            def execute(youtube: Any, video_ids: List[str]) -> dict:
+                return (
+                    youtube.videos()
+                    .list(
+                        part="contentDetails,statistics,snippet",
+                        id=",".join(video_ids),
+                        # fields=(
+                        #     "items(id,contentDetails/duration,statistics(viewCount,likeCount,favoriteCount,commentCount),snippet(publishedAt,channelId,channelTitle,title,description,thumbnails/medium/url)))"
+                        # ),
+                    )
+                    .execute()
+                )
+
+            @dataclass
+            class Response:
+                videos: List[Video]
+                next_page_token: Optional[str]
+
+        class PlaylistItems:
+
+            @dataclass
+            class Response:
+                video_ids: List[str]
+                next_page_token: Optional[str]
+
+        class Channels:
+
+            @dataclass
+            class Response: ...
+
+        class CommentThreads:
+
+            @dataclass
+            class Response: ...
 
     @classmethod
-    def build_from_env(cls) -> "OfficialYouTubeService":
+    def build_from_env(cls, origin: Video.Origin) -> "OfficialYouTubeService":
 
         # Get API key from env
         load_dotenv()
@@ -28,10 +120,13 @@ class OfficialYouTubeService(BaseYoutubeService):
         if key is None:
             raise ValueError(f"Expected {KEY_NAME} to exist in the environment!")
 
-        return cls(api_key=key)
+        return cls(api_key=key, origin=origin)
 
-    @classmethod
-    def _video_from_data(cls, data: dict) -> Video:
+    def __init__(self, api_key: str, origin: Video.Origin):
+        self.youtube = build("youtube", "v3", developerKey=api_key)
+        self.origin = origin
+
+    def _video_from_data(self, data: dict) -> Video:
 
         # What the video data should look like. The None values are required, and any other value is a default.
         data_template = {
@@ -72,7 +167,9 @@ class OfficialYouTubeService(BaseYoutubeService):
         data = fill_from(data, data_template)
         none_paths = find_none_paths(data)
         if len(none_paths) > 0:
-            raise cls.VideoParseError(json.dumps(data, indent=2), [f"Path {p} cannot be None!" for p in none_paths])
+            raise self.VideoParseError(
+                json.dumps(data, indent=2), [f"Path {p} cannot be None!" for p in none_paths]
+            )
 
         video_id = None
         if isinstance(data["id"], str):
@@ -82,7 +179,7 @@ class OfficialYouTubeService(BaseYoutubeService):
             # Youtube's Search API returns video IDs in a second nested dictionary.
             video_id = data["id"]["videoId"]
         else:
-            raise cls.VideoParseError(json.dumps(data, indent=2), ["Could not parse video_id from data!"])
+            raise self.VideoParseError(json.dumps(data, indent=2), ["Could not parse video_id from data!"])
 
         return Video(
             id=str(video_id),
@@ -101,6 +198,7 @@ class OfficialYouTubeService(BaseYoutubeService):
             label=data["label"],
             duration_seconds=int(parse_duration(data["contentDetails"]["duration"]).total_seconds()),
             published_at=datetime.fromisoformat(data["snippet"]["publishedAt"].replace("Z", "+00:00")),
+            origin=self.origin.value,
         )
 
     @classmethod
@@ -147,48 +245,64 @@ class OfficialYouTubeService(BaseYoutubeService):
             published_at=datetime.fromisoformat(data["snippet"]["publishedAt"].replace("Z", "+00:00")),
         )
 
-    def __init__(self, api_key: str):
-        self.youtube = build("youtube", "v3", developerKey=api_key)
-
-    def search_videos(
-        self, query: str, max_results=20, page_token: Optional[str] = None
-    ) -> Tuple[List[Video], Optional[str]]:
+    def search(
+        self,
+        query: str,
+        max_results=20,
+        page_token: Optional[str] = None,
+    ) -> API.Search.Response:
         """
-        Search youtube and return a list of videos along with the next page token.
-        Returns: (videos, next_page_token)
+        Search youtube and get a paginated list of video IDs.
         """
-        request_params = {
-            "q": query,
-            "type": "video",
-            "part": "snippet",
-            "maxResults": max_results,
-            "videoCategoryId": "10",  # means in the music category
-            "fields": "items(id/videoId,snippet(publishedAt,channelId,channelTitle,title,description,thumbnails/medium/url)),nextPageToken,contentDetails(duration)",
-        }
-        if page_token:
-            request_params["pageToken"] = page_token
 
-        videos_response = self.youtube.search().list(**request_params).execute()
-        videos = []
-        for item in videos_response.get("items", []):
-            try:
-                video = self._video_from_data(item)
-                videos.append(video)
-            except self.VideoParseError as e:
-                logger.error(f"Failed to parse video data: {e}")
-        logger.debug(
-            "YouTubeService found: {}.".format(
-                json.dumps(
-                    {
-                        "num_videos": len(videos),
-                        "videos": [str(x) for x in videos],
-                    },
-                    indent=2,
-                ),
-            )
+        response = self.API.Search.execute(
+            self.youtube,
+            query,
+            max_results,
+            page_token,
         )
-        next_page_token = videos_response.get("nextPageToken")
-        return videos, next_page_token
+
+        video_ids = []
+        next_page_token = None
+        if "items" in response:
+
+            # Collect video IDs
+            for item in response["items"]:
+                if "id" in item and "videoId" in item["id"]:
+                    video_ids.append(item["id"]["videoId"])
+
+        # Collect next page token
+        if "nextPageToken" in response:
+            next_page_token = response["nextPageToken"]
+
+        return self.API.Search.Response(video_ids, next_page_token)
+
+    def _videos_from_videos_response(self, response: dict) -> List[Video]:
+
+        videos: List[Video] = []
+        if "items" in response:
+            for item in response["items"]:
+                try:
+                    video = self._video_from_data(item)
+                    videos.append(video)
+                except self.VideoParseError as e:
+                    logger.error(f"Failed to parse video data!", exc_info=e)
+
+        return videos
+
+    def videos(
+        self,
+        query: str,
+        max_results: int = 20,
+        page_token: Optional[str] = None,
+    ) -> API.Videos.Response:
+        """
+        Search youtube and get a paginated list of videos.
+        """
+        search_response = self.search(query, max_results, page_token)
+        videos_response = self.API.Videos.execute(self.youtube, search_response.video_ids)
+        videos = self._videos_from_videos_response(videos_response)
+        return self.API.Videos.Response(videos, search_response.next_page_token)
 
     def get_channel_videos(self, channel_id: str, max_videos: int = 10) -> List[Video]:
         """
@@ -255,6 +369,9 @@ class OfficialYouTubeService(BaseYoutubeService):
         return videos[:max_videos]
 
     def get_comments(self, video_id: str, max_results: int) -> List[Comment]:
+        """
+        Get comments from a video, specifying the maximum number of top-level comments to be returned.
+        """
         try:
             video = Video.get(id=video_id)
             comments_response = (
@@ -264,16 +381,6 @@ class OfficialYouTubeService(BaseYoutubeService):
             )
             comments = []
             for item in comments_response.get("items", []):
-                # top_level_comment = item["snippet"]["topLevelComment"]
-                # top_level_snippet = top_level_comment["snippet"]
-                # top_level_id = top_level_comment["id"]
-                # Comment(
-                #     text=top_level_snippet["textOriginal"],
-                #     is_reply=False,
-                #     comment_id=top_level_id,
-                #     author=top_level_snippet.get("authorDisplayName", ""),
-                #     parent_id=None,
-                # )
 
                 comment = self._comment_from_data(item["snippet"]["topLevelComment"], video)
                 comments.append(comment)
@@ -286,7 +393,7 @@ class OfficialYouTubeService(BaseYoutubeService):
 
             return comments
         except Exception as e:
-            if e.__dict__["error_details"][0]["reason"] == "commentsDisabled":
+            if "error_details" in e.__dict__ and e.__dict__["error_details"][0]["reason"] == "commentsDisabled":
                 # It's expected that we will sometimes hit videos with comments disabled...
                 logger.info(f"Could not fetch comments for video {video_id}, the video has comments disabled.")
                 return []

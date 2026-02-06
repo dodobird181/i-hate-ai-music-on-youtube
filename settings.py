@@ -1,4 +1,4 @@
-from logging import WARNING, basicConfig, getLevelNamesMapping, getLogger
+from logging import ERROR, WARNING, basicConfig, getLevelNamesMapping, getLogger
 from os import environ
 
 from dotenv import load_dotenv
@@ -9,7 +9,7 @@ LOG_LEVEL = environ["LOG_LEVEL"]
 
 basicConfig(level=getLevelNamesMapping()[LOG_LEVEL], format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 getLogger("peewee").setLevel(WARNING)
-getLogger("googleapiclient").setLevel(WARNING)
+getLogger("googleapiclient").setLevel(ERROR)
 getLogger("urllib3").setLevel(WARNING)
 getLogger("matplotlib").setLevel(WARNING)
 getLogger("PIL").setLevel(WARNING)

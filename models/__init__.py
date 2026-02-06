@@ -14,13 +14,14 @@ class BaseModel(Model):
         database = db
 
 
+from models.channel import Channel
 from models.video import Video
 
 if True:
     # Must be after Video, since Comment has a FK pointing to Video
     from models.comment import Comment
 
-APP_MODELS = [Video, Comment]
+APP_MODELS = [Video, Comment, Channel]
 
 
 try:

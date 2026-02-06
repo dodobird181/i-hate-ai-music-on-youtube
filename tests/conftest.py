@@ -66,4 +66,5 @@ def video_from_data():
         label=Video.Label.UNLABELLED,
         duration_seconds=330,
         published_at=datetime.fromisoformat("2025-11-19T08:55:44+00:00"),
+        origin=Video.Origin.APP,  # Exception: This field comes from the YoutubeService instance, NOT the video data.
     )
