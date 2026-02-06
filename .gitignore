@@ -1,3 +1,11 @@
+
+
+training_data_backup.csv
+training_data.csv
+joey_*.csv
+
+
+
 .*venv
 .claude
 *.db

@@ -19,7 +19,6 @@ logging.getLogger("services.filter_service").setLevel(logging.DEBUG)
 
 app = Flask(__name__)
 app.config["YOUTUBE_API_KEY"] = os.getenv("YOUTUBE_API_KEY")
-# app.config["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
 app.config["MAX_VIDEOS_SEARCH_RESULTS"] = 5
 app.config["EXCLUDE_VIDEOS_UNDER_N_COMMENTS"] = 50
