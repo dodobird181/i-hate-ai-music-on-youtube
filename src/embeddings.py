@@ -34,3 +34,14 @@ class VideoDescriptionEmbedding:
         transformer = Sentence(model_name="all-mpnet-base-v2")
         embeddings = transformer.encode([self.video.description], show_progress_bar=False)  # type: ignore
         return embeddings[0]
+
+
+class VideoTitleEmbedding:
+
+    def __init__(self, video: Video):
+        self.video = video
+
+    def get(self) -> NDArray[float32]:
+        transformer = Sentence(model_name="all-mpnet-base-v2")
+        embeddings = transformer.encode([self.video.title], show_progress_bar=False)  # type: ignore
+        return embeddings[0]

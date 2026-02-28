@@ -129,9 +129,6 @@ def label_and_desc_embedding(video: Video) -> dict:
     }
 
 
-save_training_videos_with_data(label_and_desc_embedding, "sam_test_video_desc_data.csv")
-
-
 # process_videos(videos, "training_data.csv")
 
 # @dataclass
