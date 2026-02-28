@@ -1,8 +1,9 @@
 from dataclasses import asdict
-from json import dumps, loads
 from logging import getLogger
 from time import perf_counter
+from typing import Callable
 
+import pandas as pd
 from lightgbm import Dataset, plot_importance, train
 from matplotlib import pyplot
 from numpy import array, int8
@@ -15,8 +16,9 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 
-from feature_extraction import extract
-from models import Comment, Video
+from src.embeddings import VideoDescriptionEmbedding
+from src.feature_extraction import extract
+from src.models import Comment, Video
 
 logger = getLogger(__name__)
 
@@ -97,16 +99,39 @@ def train_model():
 
     print(classification_report(y_test, y_pred_label))
 
-    auc = roc_auc_score(y_test, y_pred)
+    auc = roc_auc_score(y_test, y_pred)  # type: ignore
     print(f"AUC: {auc:.4f}")
 
     plot_importance(model, importance_type="gain", max_num_features=20)
     pyplot.show()
 
 
-# videos = Video.select().where(
-#     (Video.duration_seconds > 60) & (Video.comments >= 50) & (Video.origin == Video.Origin.SCRAPED.value)
-# )
+def save_training_videos_with_data(data_fun: Callable[[Video], dict], filename: str) -> None:
+
+    videos = Video.select().where((Video.duration_seconds > 60) & (Video.origin == Video.Origin.SCRAPED.value))
+
+    logger.info(f"Saving training videos ({videos.count()} total)...")
+
+    d = []
+    for i, video in enumerate(videos):
+        logger.info(f"Saving video {i + 1}...")
+        d.append(data_fun(video))
+
+    df = pd.DataFrame(data=d)
+    df.to_csv(filename)
+    logger.info("Done!")
+
+
+def label_and_desc_embedding(video: Video) -> dict:
+    return {
+        "desc_embedding": VideoDescriptionEmbedding(video).get(),
+        "label": video.label,
+    }
+
+
+save_training_videos_with_data(label_and_desc_embedding, "sam_test_video_desc_data.csv")
+
+
 # process_videos(videos, "training_data.csv")
 
 # @dataclass
@@ -125,49 +150,38 @@ def train_model():
 # breakpoint()
 
 
-DATA_PATH = "training_data.csv"
-start = perf_counter()
-data = read_csv(DATA_PATH)
-end = perf_counter()
-logger.info(f"Finished loading {DATA_PATH} after {end - start:.6f} seconds.")
+# DATA_PATH = "training_data.csv"
+# start = perf_counter()
+# data = read_csv(DATA_PATH)
+# end = perf_counter()
+# logger.info(f"Finished loading {DATA_PATH} after {end - start:.6f} seconds.")
 
-count = 0
-with open("joey_data_with_video_ids.csv", "a") as file:
-    for row in data.itertuples(index=False):
-        for embedding_vec in loads(row.embeddings):  # type: ignore
-            single_comment_row = (
-                {
-                    "description_len": row.len,
-                    "description_readability_score": row.readability_score,
-                    "description_num_links": row.num_links,
-                    "description_num_ai_keywords": row.num_ai_keywords,
-                    "description_contains_ai_keywords": row.contains_ai_keywords,
-                    "average_comment_len": row.average_len,
-                    "percent_short_comments": row.percent_short,
-                    "percent_duplicate_comments": row.percent_duplicate,
-                    "comments_emoji_density": row.emoji_density,
-                    "comments_percent_unique_words": row.percent_unique_words,
-                    "comments_generic_praise_ratio": row.generic_praise_ratio,
-                    "video_id": row.video_id,
-                }
-                | {f"embedding_dim_{i}": num for i, num in enumerate(embedding_vec)}
-                | {"label": row.label}
-            )
-            if count == 0:
-                # write headers
-                file.write(",".join([str(x) for x in single_comment_row.keys()]) + "\n")
-            # Write CSV row for comment embedding
-            file.write(",".join([str(x) for x in single_comment_row.values()]) + "\n")
-            count += 1
-            logger.debug(f"Wrote line {count}.")
-
-# import json
-
-# import requests
-# from bs4 import BeautifulSoup
-
-# html = requests.get("https://www.macrotrends.net/1437/sp500-to-gold-ratio-chart").text
-# breakpoint()
-# soup = BeautifulSoup(html, "html.parser")
-# soup.find("script", id="originalData").string
-# data = json.loads()
+# count = 0
+# with open("joey_data_with_video_ids.csv", "a") as file:
+#     for row in data.itertuples(index=False):
+#         for embedding_vec in loads(row.embeddings):  # type: ignore
+#             single_comment_row = (
+#                 {
+#                     "description_len": row.len,
+#                     "description_readability_score": row.readability_score,
+#                     "description_num_links": row.num_links,
+#                     "description_num_ai_keywords": row.num_ai_keywords,
+#                     "description_contains_ai_keywords": row.contains_ai_keywords,
+#                     "average_comment_len": row.average_len,
+#                     "percent_short_comments": row.percent_short,
+#                     "percent_duplicate_comments": row.percent_duplicate,
+#                     "comments_emoji_density": row.emoji_density,
+#                     "comments_percent_unique_words": row.percent_unique_words,
+#                     "comments_generic_praise_ratio": row.generic_praise_ratio,
+#                     "video_id": row.video_id,
+#                 }
+#                 | {f"embedding_dim_{i}": num for i, num in enumerate(embedding_vec)}
+#                 | {"label": row.label}
+#             )
+#             if count == 0:
+#                 # write headers
+#                 file.write(",".join([str(x) for x in single_comment_row.keys()]) + "\n")
+#             # Write CSV row for comment embedding
+#             file.write(",".join([str(x) for x in single_comment_row.values()]) + "\n")
+#             count += 1
+#             logger.debug(f"Wrote line {count}.")

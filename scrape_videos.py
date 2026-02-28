@@ -1,6 +1,5 @@
-from ai_channels import CHANNELS
-from models import Video
-from youtube import OfficialYouTubeService
+from src.models import Video
+from src.youtube import OfficialYouTubeService
 
 # Scrape videos
 for channel_id in [

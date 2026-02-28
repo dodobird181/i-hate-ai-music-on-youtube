@@ -44,4 +44,4 @@ def find_none_paths(obj: dict, _path: str = "") -> List[str]:
     return paths
 
 
-from youtube.official_service import OfficialYouTubeService
+from src.youtube.official_service import OfficialYouTubeService

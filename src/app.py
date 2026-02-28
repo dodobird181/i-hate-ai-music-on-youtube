@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, render_template, request
 
-from models import Comment, Video
-from predictions import predict
-from youtube import OfficialYouTubeService
+from src.models import Comment, Video
+from src.predictions import predict
+from src.youtube import OfficialYouTubeService
 
 load_dotenv()
 

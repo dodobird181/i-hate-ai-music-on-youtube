@@ -8,9 +8,9 @@ from numpy import mean, ndarray, std, triu_indices_from
 from sklearn.metrics.pairwise import cosine_similarity
 from textstat import textstat
 
-from embedding import Sentence
-from lists import AI_KEYWORDS, GENERIC_PRAISE
-from models import Comment, Video
+from src.embeddings import Sentence
+from src.lists import AI_KEYWORDS, GENERIC_PRAISE
+from src.models import Comment, Video
 
 # Regex string that matches URLs.
 URL_REGEX = r"https?://\S+|www\.\S+"
@@ -67,6 +67,7 @@ def _average_seconds_between_channel_uploads(self, video: Video) -> int:
     channel_videos = Video.select().where(Video.channel_id == video.channel_id)
     datetimes = [x.published_at for x in channel_videos]
     # TODO
+    return 0
 
 
 def extract_videos(videos: List[Video]) -> List[VideoFeatures]:

@@ -1,3 +1,4 @@
+import json
 from dataclasses import asdict
 from logging import WARNING, getLogger
 from time import perf_counter
@@ -6,8 +7,8 @@ from lightgbm import Booster
 from pandas import DataFrame
 from peewee import fn
 
-from feature_extraction import extract
-from models import Comment, Video
+from src.feature_extraction import extract
+from src.models import Comment, Video
 
 logger = getLogger(__name__)
 
@@ -32,8 +33,6 @@ def predict(video, threshold=0.7) -> Video.Label:
     features = extract(video, comments)
     video_data = asdict(features.description) | asdict(features.comments)
     pred_category = _VideoLabeler().predict(DataFrame([video_data]))
-
-    import json
 
     logger.debug(f"Video {video.id} {video.title} by {video.channel_name} has humanity score of {pred_category[0]:0.2f}.")  # type: ignore
     logger.debug(json.dumps(video_data, indent=2))

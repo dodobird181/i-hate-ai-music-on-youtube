@@ -10,7 +10,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from isodate import parse_duration
 
-from models import Comment, Video
+from src.models import Comment, Video
 
 from . import fill_from, find_none_paths
 

@@ -1,7 +1,7 @@
 from logging import getLogger
 
-from models import Comment, Video
-from youtube import OfficialYouTubeService
+from src.models import Comment, Video
+from src.youtube import OfficialYouTubeService
 
 logger = getLogger()
 

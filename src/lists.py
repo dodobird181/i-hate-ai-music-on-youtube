@@ -830,7 +830,8 @@ AI_KEYWORDS = [
     "computer generated visuals",
 ]
 
-CHANNELS = [
+AI_CHANNELS = [
+    # From: https://surasshu.com/blocklist-for-ai-music-on-youtube/
     "UCzj2vEVlx9do5B7Q9kSnp-A",
     "UCzcud8FK859j2Aj7rLHSrfw",
     "UCzF2Asm0s6o8OqqnlOVdF_w",

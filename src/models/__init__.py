@@ -1,9 +1,9 @@
 from logging import getLogger
 from sys import modules
 
-from peewee import PostgresqlDatabase
+from peewee import Model, PostgresqlDatabase
 
-from settings import (
+from src.settings import (
     POSTGRES_DB,
     POSTGRES_HOST,
     POSTGRES_PASSWORD,
@@ -15,6 +15,10 @@ from settings import (
     TEST_POSTGRES_PORT,
     TEST_POSTGRES_USER,
 )
+
+"""
+Database initialization code for Peewee models.
+"""
 
 logger = getLogger(__name__)
 
@@ -44,7 +48,7 @@ def get_db() -> PostgresqlDatabase:
 
 
 def reset_test_database() -> None:
-    from models import APP_MODELS
+    from src.models import APP_MODELS
 
     logger.debug("Resetting the test database...")
     db = _test_db()
@@ -55,3 +59,32 @@ def reset_test_database() -> None:
         logger.info("Successfully connected to the database: {}!".format(db.database))
     except Exception as e:
         logger.error("Failed to connect to the database: {}!".format(db.database), exc_info=e)
+
+
+db = get_db()
+
+
+class BaseModel(Model):
+    class Meta:
+        database = db
+
+
+from src.models.channel import Channel
+from src.models.video import Video
+
+if True:
+    # Must be imported after Video, since Comment has a FK pointing to Video
+    from src.models.comment import Comment
+
+# For creating tables (and destroying them in tests)
+APP_MODELS = [Video, Comment, Channel]
+
+
+try:
+    # Initialize a database connection on module-load
+    logger.info("Connecting to database...")
+    db.connect()
+    db.create_tables(APP_MODELS)
+    logger.info("Successfully connected to the database: {}!".format(db.database))
+except Exception as e:
+    logger.error("Failed to connect to the database: {}!".format(db.database), exc_info=e)

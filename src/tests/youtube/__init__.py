@@ -2,7 +2,7 @@ from typing import List
 
 from pytest import mark
 
-from youtube import fill_from, find_none_paths
+from src.youtube import fill_from, find_none_paths
 
 
 @mark.parametrize(

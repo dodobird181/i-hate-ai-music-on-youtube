@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pytest import fixture
 
-from db import reset_test_database
+from src.models import reset_test_database
 
 
 @fixture(autouse=True)
@@ -48,7 +48,7 @@ def video_from_data():
     """
     A video model instance that should correspond to the raw `VIDEO_DATA` above.
     """
-    from models import Video
+    from src.models import Video
 
     yield Video(
         id="VVV5UmJNTTJLQ2l2WVFIblZpOHk4QUF3LncyZzRVV2NHcllR",

@@ -1,7 +1,7 @@
 from pytest import mark
 
-from models import Video
-from tests.conftest import VIDEO_DATA
+from src.models import Video
+from src.tests.conftest import VIDEO_DATA
 
 
 @mark.use_db

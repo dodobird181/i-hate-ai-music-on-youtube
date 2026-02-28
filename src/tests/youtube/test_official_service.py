@@ -1,8 +1,8 @@
 from pytest import fail, mark
 
-from models import Video
-from tests.conftest import VIDEO_DATA
-from youtube import OfficialYouTubeService
+from src.models import Video
+from src.tests.conftest import VIDEO_DATA
+from src.youtube import OfficialYouTubeService
 
 
 @mark.parametrize(
