@@ -1,9 +1,4 @@
-
-
-training_data_backup.csv
-training_data.csv
-joey_*.csv
-
+data_science/tmp_data
 
 
 .*venv
